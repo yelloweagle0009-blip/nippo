@@ -173,5 +173,14 @@ async function readHead(head,onProg){
   const tier=best.checked?'blue':'yellow';
   return {start:{v:best.start,tier},end:{v:best.end,tier},total:best.end-best.start,checked:best.checked,S,En,T};
 }
-window.NippoOCR={load,readRows,readHead,decide,decideOld,W,TH};
+// 店名を読む：3つのモデル × 2種類の切り抜きで、全文字のまま読んだ結果を集める
+async function readPlaceRaw(rows,onProg){
+  const eng=await load(b=>onProg&&onProg({phase:'download',bytes:b}));
+  const out=[]; let done=0; const total=rows.length*eng.length*2;
+  for(const r of rows){ const cv=r.ocr.place&&r.ocr.place.A; const list=[];
+    for(const E of eng) for(const [vn,v] of [['A',cv],['Ae',enh(cv)]]){ let x=null; try{ x=await recBoth(E,v); }catch(e){} if(x) list.push({s:E.k+vn,t:x.free.t,m:x.free.m}); done++; onProg&&onProg({phase:'place',done,total}); }
+    out.push(list); }
+  return out;
+}
+window.NippoOCR={load,readRows,readHead,readPlaceRaw,decide,decideOld,W,TH};
 })();
