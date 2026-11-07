@@ -40,7 +40,14 @@ header .pad{padding-block:10px}
 .sub{font-size:12px;color:var(--muted);margin-top:4px}
 main .pad{padding-block:12px 80px}
 h2{font-size:14px;color:var(--accent);letter-spacing:.15em;margin:18px 0 8px}
-.head,.row{display:grid;grid-template-columns:2em 1fr 1fr 1.25fr 2em;gap:6px;align-items:center}
+.head,.row,.seg{display:grid;grid-template-columns:1.15fr 1.7em 1.35fr 1.6em;gap:6px;align-items:center}
+.tm{display:grid;grid-template-columns:1.3em 1fr;gap:4px 4px;align-items:center}
+.tm i{font-style:normal;font-size:13px;color:var(--muted);text-align:center}
+.row{border-top:1px solid var(--rule);padding-top:6px}
+.mt{display:grid;grid-template-columns:auto 1fr auto;gap:6px 8px;align-items:center;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;margin:0 0 12px}
+.mt label{font-size:14px;color:var(--muted)}
+.mt small{font-size:13px;color:var(--muted)}
+.mt b{font-family:var(--f-num);font-size:22px;font-variant-numeric:tabular-nums;text-align:center}
 .head{font-size:12px;color:var(--muted);padding:0 0 2px;text-align:center}
 .no{font-family:var(--f-num);color:var(--accent);text-align:center}
 input{font:inherit;font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:17px;color:var(--ink);background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:9px 6px;width:100%;min-width:0;text-align:center}
@@ -48,7 +55,8 @@ input::placeholder{color:var(--muted);opacity:.6}
 input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 input.ng{border-color:var(--warn);background:var(--warn-soft)}
 .x{border:0;background:transparent;color:var(--muted);font:inherit;font-size:18px;padding:0}
-.seg{display:flex;align-items:center;gap:8px;margin:4px 0 4px calc(2em + 6px);font-size:13px;color:var(--muted)}
+.seg{margin:6px 0;font-size:13px;color:var(--muted)}
+.seg>div{grid-column:1/4;display:flex;align-items:center;gap:8px}
 .tg{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--sheet);color:var(--muted);border-radius:99px;padding:3px 12px;min-width:5.5em}
 .tg[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
 .seg span{font-family:var(--f-num);font-variant-numeric:tabular-nums}
@@ -79,12 +87,18 @@ input.ng{border-color:var(--warn);background:var(--warn-soft)}
 </div></header>
 
 <main><div class="pad">
-  <p class="note" style="margin-top:0">紙のメモを、日報の運行記録と同じ行番号で打ち込みます。時刻は「845」のように数字だけ、メーターは下3桁だけで足ります。荷を積んで走った区間は「実車」に切り替えてください。</p>
+  <p class="note" style="margin-top:0">日報と同じ並びで打ち込みます（メーターは左の欄外、時刻は上が着・下が発）。時刻は「845」のように数字だけ、行のメーターは下3桁だけで足ります。荷を積んで走った区間は「実車」に切り替えてください。</p>
+  <h2>メーター</h2>
+  <div class="mt">
+    <label for="mS">始業時メーター</label><input id="mS" data-k="1" data-f="start" inputmode="numeric" enterkeyhint="next" autocomplete="off" aria-label="始業時メーター"><small>km</small>
+    <label for="mE">終業時メーター</label><input id="mE" data-k="1" data-f="end" inputmode="numeric" enterkeyhint="next" autocomplete="off" aria-label="終業時メーター"><small>km</small>
+    <label>走行粁</label><b id="soukou">—</b><small>km</small>
+  </div>
   <h2>運行記録</h2>
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <p class="busy" id="busy"></p>
   <div id="photoTop"></div>
-  <div class="head"><span></span><span>着</span><span>発</span><span>メーター</span><span></span></div>
+  <div class="head"><span>メーター（欄外）</span><span></span><span>上が着・下が発</span><span></span></div>
   <div id="rows"></div>
   <div class="btns"><button class="btn solid" id="add">＋ 行を足す</button></div>
 
@@ -119,14 +133,16 @@ function resolveMeter(input,prev){
   if(d.length>4) return Number(d); // 5桁以上は全桁を打ったものとしてそのまま
   const u=10**d.length; let c=prev-(prev%u)+Number(d); if(c<prev) c+=u; return c;
 }
-function compute(rows,rests,waits=[]){
+function compute(rows,rests,waits=[],mt={}){
   const warn=[];
+  const sV=digits(mt.start)?Number(digits(mt.start)):null, eV=digits(mt.end)?Number(digits(mt.end)):null;
   rows=rows.slice(); while(rows.length&&!digits(rows[rows.length-1].arr)&&!digits(rows[rows.length-1].dep)&&!digits(rows[rows.length-1].meter)) rows.pop();
   // 時刻を一本の時間軸に（0時をまたいだら翌日へ）
   let cur=null, off=0;
   const place=v=>{ const t=hm(v); if(t==null) return null; if(cur==null){cur=t;return t;} let a=t+off; while(a<cur){off+=1440;a=t+off;} cur=a; return a; };
   const T=rows.map(r=>({a:place(r.arr),d:place(r.dep)}));
-  let prev=null; const M=rows.map((r,i)=>{ const m=resolveMeter(r.meter,prev); if(m!=null){ if(prev!=null&&m<prev) warn.push(`${i+2}行目のメーターが前の行より小さい`); prev=m; } return m; });
+  // 最初の行は空欄なら始業メーター、最後の行は空欄なら終業メーター。行の下3桁は始業メーターの上の桁で補う
+  let prev=sV; const M=rows.map((r,i)=>{ let m=resolveMeter(r.meter,prev); if(m==null&&i===0&&sV!=null) m=sV; if(m==null&&i===rows.length-1&&i>0&&eV!=null) m=resolveMeter(String(eV),prev)??eV; if(m!=null){ if(prev!=null&&m<prev) warn.push(`${i+2}行目のメーターが前の行より小さい`); prev=m; } return m; });
   rows.forEach((r,i)=>{ if(r.arr&&hm(r.arr)==null) warn.push(`${i+2}行目の着「${r.arr}」が読めない`); if(r.dep&&hm(r.dep)==null) warn.push(`${i+2}行目の発「${r.dep}」が読めない`); });
   const segs=[];
   for(let i=0;i<rows.length-1;i++){
@@ -151,7 +167,11 @@ function compute(rows,rests,waits=[]){
   if(missT) warn.push(`時刻が足りない区間が${missT}つある（その区間は運転時間に入っていない）`);
   let jissha=0, missK=0; segs.forEach(x=>{ if(x.loaded){ if(x.km==null) missK++; else jissha+=x.km; } });
   if(missK) warn.push(`実車の区間のうち${missK}つでメーターが足りない（実車距離に入っていない）`);
-  const known=M.filter(m=>m!=null); const soukou=known.length>=2?known[known.length-1]-known[0]:null;
+  const known=M.filter(m=>m!=null);
+  let soukou=known.length>=2?known[known.length-1]-known[0]:null;
+  if(sV!=null&&eV!=null){ soukou=eV-sV; if(soukou<0) warn.push('終業時メーターが始業時メーターより小さい');
+    const last=M[M.length-1]; if(last!=null&&last!==eV) warn.push(`最後の行のメーター（${last}）と終業時メーター（${eV}）が合わない`);
+    if(M[0]!=null&&M[0]!==sV) warn.push(`最初の行のメーター（${M[0]}）と始業時メーター（${sV}）が合わない`); }
   return {segs,M,missT,jissha,missK,drive,gross,restIn,restTotal,waitTotal,soukou,anyLoaded:segs.some(x=>x.loaded),warn};
 }
 /* CALC-END */
@@ -163,10 +183,11 @@ const newRow=()=>({arr:'',dep:'',meter:'',loaded:false});
 const PKEY='unkou-photo-v1';
 let PH=null; try{ PH=JSON.parse(localStorage.getItem(PKEY)||'null'); }catch(e){}
 const savePH=()=>{ try{ if(PH) localStorage.setItem(PKEY,JSON.stringify(PH)); else localStorage.removeItem(PKEY); }catch(e){} };
-const fresh=()=>({rows:[newRow(),newRow(),newRow()],rests:[{from:'',to:''}],waits:[{from:'',to:''}]});
+const fresh=()=>({start:'',end:'',rows:[newRow(),newRow(),newRow()],rests:[{from:'',to:''}],waits:[{from:'',to:''}]});
 let D=null; try{ D=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
 if(!D||!Array.isArray(D.rows)) D=fresh();
 if(!Array.isArray(D.waits)) D.waits=[{from:'',to:''}];
+if(D.start==null) D.start=''; if(D.end==null) D.end='';
 const save=()=>{ try{localStorage.setItem(KEY,JSON.stringify(D));}catch(e){} };
 const fmt=m=>m==null?'—':Math.floor(m/60)+'時間'+(m%60)+'分';
 
@@ -174,15 +195,17 @@ function render(){
   let h='';
   D.rows.forEach((r,i)=>{
     if(PH&&PH.rows&&PH.rows[i]) h+=`<img class="crop" src="${PH.rows[i]}" alt="写真の${i+2}行目">`;
-    h+=`<div class="row"><span class="no">${i+2}</span>
-      <input id="r${i}a" data-r="${i}" data-f="arr" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
-      <input id="r${i}d" data-r="${i}" data-f="dep" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発">
+    h+=`<div class="row">
       <input id="r${i}m" data-r="${i}" data-f="meter" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.meter)}" aria-label="${i+2}行目 メーター">
+      <span class="no">${i+2}</span>
+      <div class="tm"><i>着</i><input id="r${i}a" data-r="${i}" data-f="arr" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
+        <i>発</i><input id="r${i}d" data-r="${i}" data-f="dep" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発"></div>
       <button class="x" data-del="${i}" aria-label="${i+2}行目を消す">×</button></div>`;
-    if(i<D.rows.length-1) h+=`<div class="seg"><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span></div>`;
+    if(i<D.rows.length-1) h+=`<div class="seg"><div><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span></div></div>`;
   });
   $('rows').innerHTML=h;
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真を見ながら数字を打ってください。最初の行のメーターは<b>始業メーター</b>、最後の行は<b>終業メーター</b>の下3桁です。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p><img class="crop" src="${PH.header}" alt="写真の始業・終業メーター"><div class="btns"><button class="btn" id="photoDel">写真を消す</button></div></div>`:'';
+  $('mS').value=D.start; $('mE').value=D.end;
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真を見ながら数字を打ってください。始業・終業メーターは上の「メーター」欄に全部の桁を入れてください。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p><img class="crop" src="${PH.header}" alt="写真の始業・終業メーター"><div class="btns"><button class="btn" id="photoDel">写真を消す</button></div></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -190,9 +213,12 @@ function render(){
     <button class="x" data-wdel="${j}" aria-label="待機${j+1}を消す">×</button></div>`).join('');
   update();
 }
-const listOf=t=>t.dataset.r!=null?D.rows[+t.dataset.r]:t.dataset.q!=null?D.rests[+t.dataset.q]:D.waits[+t.dataset.w];
+const listOf=t=>t.dataset.k!=null?D:t.dataset.r!=null?D.rows[+t.dataset.r]:t.dataset.q!=null?D.rests[+t.dataset.q]:D.waits[+t.dataset.w];
 function update(){
-  const c=compute(D.rows,[],D.waits);
+  const c=compute(D.rows,[],D.waits,{start:D.start,end:D.end});
+  $('soukou').textContent=c.soukou!=null?c.soukou:'—';
+  const tail=v=>{ const d=digits(v); return d?d.slice(-3):''; };
+  D.rows.forEach((r,i)=>{ const el=$('r'+i+'m'); if(el) el.placeholder=i===0&&D.start?tail(D.start):(i===D.rows.length-1&&i>0&&D.end?tail(D.end):''); });
   c.segs.forEach((g,i)=>{ const el=$('s'+i); if(el) el.textContent=(g.min==null?'— 分':g.min+'分')+' · '+(g.km==null?'— km':g.km+'km'); });
   $('aJ').querySelector('b').textContent=c.anyLoaded?c.jissha+' km':'—';
   $('aJ').classList.toggle('bad',c.missK>0);
@@ -210,7 +236,7 @@ document.addEventListener('input',e=>{
   save(); update();
 });
 document.addEventListener('change',e=>{
-  const t=e.target, f=t.dataset.f; if(!f||f==='meter') return;
+  const t=e.target, f=t.dataset.f; if(!f||f==='meter'||t.dataset.k!=null) return;
   const n=normTime(t.value); if(n){ t.value=n; listOf(t)[f]=n; save(); update(); }
 });
 document.addEventListener('keydown',e=>{
@@ -223,7 +249,7 @@ document.addEventListener('click',e=>{
   if(d.ld!=null){ const r=D.rows[+d.ld]; r.loaded=!r.loaded; save(); b.setAttribute('aria-pressed',r.loaded); b.textContent=r.loaded?'実車':'空車'; update(); }
   else if(d.del!=null){ if(D.rows.length<=2) return; D.rows.splice(+d.del,1); save(); render(); }
   else if(d.rdel!=null){ D.rests.splice(+d.rdel,1); save(); render(); }
-  else if(b.id==='add'){ D.rows.push(newRow()); save(); render(); $('r'+(D.rows.length-1)+'a').focus(); }
+  else if(b.id==='add'){ D.rows.push(newRow()); save(); render(); $('r'+(D.rows.length-1)+'m').focus(); }
   else if(d.wdel!=null){ D.waits.splice(+d.wdel,1); save(); render(); }
   else if(b.id==='addW'){ D.waits.push({from:'',to:''}); save(); render(); }
   else if(b.id==='photoBtn'){ $('photoIn').value=''; $('photoIn').click(); }
