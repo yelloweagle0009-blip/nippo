@@ -230,8 +230,9 @@ const pname=v=>String(v||'').trim().replace(/\s+/g,' ');
 // 今日の行から「場所→場所」の距離を覚える（推定した値は使わない）
 function routeRecord(M){
   let ch=false;
-  D.rows.forEach((r,i)=>{ const a=pname(r.place); if(a&&ROUTES.places[a]==null){ ROUTES.places[a]=Date.now(); ch=true; } });
-  for(let i=0;i<D.rows.length-1;i++){ const a=pname(D.rows[i].place), b=pname(D.rows[i+1].place); if(!a||!b) continue;
+  const unconfirmed=r=>r.placeRaw&&r.auto&&r.auto.place;
+  D.rows.forEach((r,i)=>{ const a=pname(r.place); if(a&&!unconfirmed(r)&&ROUTES.places[a]==null){ ROUTES.places[a]=Date.now(); ch=true; } });
+  for(let i=0;i<D.rows.length-1;i++){ const a=pname(D.rows[i].place), b=pname(D.rows[i+1].place); if(!a||!b||unconfirmed(D.rows[i])||unconfirmed(D.rows[i+1])) continue;
     const key=a+'→'+b, est=(D.rows[i].est&&D.rows[i].est.meter)||(D.rows[i+1].est&&D.rows[i+1].est.meter);
     const km=(M[i]!=null&&M[i+1]!=null)?M[i+1]-M[i]:null; const seg=ROUTES.seg[key]||(ROUTES.seg[key]={});
     const id=D.day+'#'+i;  // 同じ日に同じ区間を何回走っても、1回ずつ覚える
@@ -261,7 +262,7 @@ function render(){
       <div class="tm"><i>着</i><input id="r${i}a" data-r="${i}" data-f="arr" class="${r.auto&&r.auto.arr?(r.auto.arr===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
         <i>発</i><input id="r${i}d" data-r="${i}" data-f="dep" class="${r.auto&&r.auto.dep?(r.auto.dep===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発"></div>
       <button class="x" data-del="${i}" aria-label="${i+2}行目を消す">×</button>
-      <div class="pl"><span>場所</span><input id="r${i}p" data-r="${i}" data-f="place" list="placeList" autocomplete="off" enterkeyhint="next" placeholder="例：KFK甲府南（前に入れた場所は候補に出ます）" value="${esc(r.place||'')}" aria-label="${i+2}行目 場所"></div>
+      <div class="pl"><span>場所</span><input id="r${i}p" data-r="${i}" data-f="place" class="${r.auto&&r.auto.place?(r.auto.place===2?'maybe':'auto'):''}" list="placeList" autocomplete="off" enterkeyhint="next" placeholder="例：KFK甲府南（前に入れた場所は候補に出ます）" value="${esc(r.place||'')}" aria-label="${i+2}行目 場所"></div>
       <div class="sug" id="g${i}"></div></div>`;
     if(i<D.rows.length-1) h+=`<div class="seg"><div><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span></div></div>`;
   });
@@ -269,7 +270,7 @@ function render(){
   $('placeList').innerHTML=Object.keys(ROUTES.places).sort((a,b)=>ROUTES.places[b]-ROUTES.places[a]).map(p=>`<option value="${esc(p)}">`).join('');
   $('mS').value=D.start; $('mE').value=D.end;
   const ah=D.autoHead||{}; [['mS','start'],['mE','end']].forEach(([id,f])=>{ $(id).classList.toggle('auto',ah[f]===1); $(id).classList.toggle('maybe',ah[f]===2); });
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、前に入れた場所の中から一番近いものを入れます（初めての店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -385,7 +386,15 @@ async function readDigits(prow,head){
         if(f==='meter'&&i===0&&digits(D.start)) return;              // 最初の行は始業メーターを使う
         if(f==='meter'&&i===D.rows.length-1&&digits(D.end)) return;   // 最後の行は終業メーターを使う
         row[f]=x.v; row.auto[f]=x.tier==='blue'?1:2; row.autoV=row.autoV||{}; row.autoV[f]=digits(x.v); x.tier==='blue'?n++:nm++; }); });
+    // 店名（空欄のときだけ）
+    let pn=0,pm=0;
+    try{
+      const known=Object.keys(ROUTES.places);
+      const pl=await window.NippoOCR.readPlaces(prow,known,()=>{ $('busy').textContent='店名を読み取っています…'; });
+      if(D.rows===rowsAt) pl.forEach((x,i)=>{ const row=D.rows[i]; if(!x||!row||pname(row.place)) return; row.place=x.name; row.auto=row.auto||{}; row.auto.place=x.tier==='blue'?1:2; if(x.raw) row.placeRaw=1; x.tier==='blue'?pn++:pm++; });
+    }catch(e){}
     save(); render();
+    if(pn+pm) hn=(hn?hn+' ':'')+`店名：青 ${pn}か所・黄 ${pm}か所。`;
     $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
   }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。'; }
 }
@@ -397,8 +406,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js"></script>
-<script src="ocr.js"></script>
+<script src="photo.js?v=13"></script>
+<script src="ocr.js?v=13"></script>
 
 </body>
 </html>

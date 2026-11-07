@@ -160,9 +160,10 @@ async function analyze(file){
     const view=rectCrop(hiR,k,X(r,-100),r.y-r.d*0.62,X(r,240),r.y+r.d*0.62);
     const cell=(a,b)=>({A:rectCrop(hiR,k,X(r,146),a-hb*0.25,X(r,234),b+hb*0.25), C:tightCrop(L,X(r,146),X(r,234),a-hb*0.6,b+hb*0.6,(a+b)/2,hb,'time')});
     const meterA=rectCrop(hiR,k,X(r,-60),r.y-r.d*0.75,X(r,72),r.y+r.d*0.75);
+    const placeA=rectCrop(hiR,k,X(r,236),r.y-r.d*0.55,X(r,404),r.y+r.d*0.55);  // 店名欄（行の着・発をまたいで書かれる）
     const meterC=tightCrop(L,X(r,-60),X(r,62),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
     out.push({paperRow:pr, loaded:tsumi[pr-1]>0.035, hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
-      img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}}});
+      img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
   const r1=rows[0]; let header=null;

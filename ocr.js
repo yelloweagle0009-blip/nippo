@@ -173,5 +173,34 @@ async function readHead(head,onProg){
   const tier=best.checked?'blue':'yellow';
   return {start:{v:best.start,tier},end:{v:best.end,tier},total:best.end-best.start,checked:best.checked,S,En,T};
 }
-window.NippoOCR={load,readRows,readHead,decide,decideOld,W,TH};
+// 店名を読む：3つのモデル × 2種類の切り抜きで、全文字のまま読んだ結果を集める
+async function readPlaceRaw(rows,onProg){
+  const eng=await load(b=>onProg&&onProg({phase:'download',bytes:b}));
+  const out=[]; let done=0; const total=rows.length*eng.length*2;
+  for(const r of rows){ const cv=r.ocr.place&&r.ocr.place.A; const list=[];
+    for(const E of eng) for(const [vn,v] of [['A',cv],['Ae',enh(cv)]]){ let x=null; try{ x=await recBoth(E,v); }catch(e){} if(x) list.push({s:E.k+vn,t:x.free.t,m:x.free.m}); done++; onProg&&onProg({phase:'place',done,total}); }
+    out.push(list); }
+  return out;
+}
+// 店名を決める：前に入れた場所の中から、読んだ文字に一番似ているものを選ぶ（似ている度合い＝共通する文字の並びの長さ）。
+// 2つ以上の読みが同じで、前の場所より長い（例：「KFK甲府南」に対して「KFK甲府南工場」）ときは、読んだ文字をそのまま黄色で出す。
+// 前に入れた場所が1つも無いときは、2つ以上の読みが一致した文字を黄色で出す。
+const SIMP={'车':'車','库':'庫','场':'場','图':'図','认':'認','从':'従','师':'師','饮':'飲','腾':'騰','韩':'韓','门':'門','国':'国'};
+const normP=s=>String(s||'').normalize('NFKC').toUpperCase().replace(/./g,c=>SIMP[c]||c).replace(/[\s・.,，、。:;~？?!！\-‐ー－+＋()（）'"`/|]/g,'');
+const lcsLen=(a,b)=>{ let p=new Array(b.length+1).fill(0); for(let i=1;i<=a.length;i++){ const c=[0]; for(let j=1;j<=b.length;j++) c[j]=a[i-1]===b[j-1]?p[j-1]+1:Math.max(p[j],c[j-1]); p=c; } return p[b.length]; };
+const simL=(a,b)=>{ a=normP(a); b=normP(b); if(!a||!b) return 0; return 2*lcsLen(a,b)/(a.length+b.length); };
+const TP={blue:0.45,gap:0.1,yel:0.2};
+function pickPlace(reads,known){
+  const R=reads.filter(x=>x.m>=0.5&&normP(x.t)); if(!R.length) return null;
+  const raw={}; R.forEach(x=>{ const k=normP(x.t); raw[k]=(raw[k]||0)+1; });
+  const cons=Object.entries(raw).filter(([k,c])=>c>=2).sort((a,b)=>b[1]-a[1]).map(([k])=>k);
+  if(!known.length) return cons.length?{name:cons[0],tier:'yellow',raw:true}:null;
+  const sc=known.map(k=>({name:k,s:R.reduce((a,x)=>a+simL(x.t,k),0)/R.length})).sort((a,b)=>b.s-a.s);
+  const b=sc[0], s2=sc[1]?sc[1].s:0;
+  for(const c of cons){ if(known.some(k=>normP(k)===c)) continue; const sRaw=R.reduce((a,x)=>a+simL(x.t,c),0)/R.length;
+    if(c.length>normP(b.name).length&&simL(c,b.name)>=0.6&&sRaw>b.s+0.05) return {name:c,tier:'yellow',raw:true}; }
+  const tier=(b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
+}
+async function readPlaces(rows,known,onProg){ const raw=await readPlaceRaw(rows,onProg); return raw.map(list=>pickPlace(list,known||[])); }
+window.NippoOCR={load,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
 })();
