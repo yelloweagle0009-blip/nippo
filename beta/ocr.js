@@ -11,7 +11,7 @@ const MODELS=[{k:'v6s',m:'PP-OCRv6_small_rec.onnx',d:'ppocrv6_dict.txt'},{k:'v5'
 const STORE='nippo-ocr-v1';
 // 読み方ごとの重み（T=時刻、M=メーター。モデル名＋切り抜きの種類＋d=数字だけで読む）
 const W={Tv5Ad:2.2,Mv6sAed:1.95,Tv5A:1.88,Tv6sAe:1.61,Mv6sAe:1.61,Mv6sC:1.47,Mv6sCd:1.47,Tv6sAed:1.44,Mv6tC:1.3,Mv6tCd:1.3,Mv6tCed:1.3,Tv6sCe:1.24,Tv6sCed:1.24,Tv6tAed:1.24,Tv5Apd:1.21,Tv6tAe:1.2,Tv5C:1.16,Tv5Ap:1.16,Tv5Ced:1.15,Tv5Cd:1.1,Tv5Ce:1.1,Mv6tCe:1.1,Tv6sC:1.05,Tv6sCd:1.05,Tv6sApd:0.99,Tv6sA:0.99,Tv6sAd:0.89,Mv6sA:0.85,Mv6sAd:0.85,Tv6sAp:0.72,Tv5Aed:0.67,Tv6tCe:0.66,Tv6tCed:0.61,Mv6sCe:0.59,Mv6sCed:0.59,Mv5C:0.59,Mv5Cd:0.59,Mv5Cp:0.51,Mv6tAe:0.51,Mv6tAed:0.51,Tv5Ae:0.44,Tv6tA:0.42,Tv6tAd:0.39,Tv6tCd:0.36,Tv6sCpd:0.34,Mv6sCp:0.34,Mv6sCpd:0.34,Tv6tC:0.07};
-const TH={t:{blue:15,gap:3,yel:1},m:{blue:3,gap:3,yel:0.8}};
+const TH={t:{blue:15,gap:3,yel:1},m:{blue:6,gap:3,yel:0.8}};
 let ready=null;
 
 async function fetchKeep(url,onBytes){ // スマホに保存してあればそれを使い、無ければ取ってきて保存する
