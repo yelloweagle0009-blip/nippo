@@ -191,6 +191,27 @@ const newRow=()=>({arr:'',dep:'',meter:'',loaded:false});
 const PKEY='unkou-photo-v1';
 let PH=null; try{ PH=JSON.parse(localStorage.getItem(PKEY)||'null'); }catch(e){}
 const savePH=()=>{ try{ if(PH) localStorage.setItem(PKEY,JSON.stringify(PH)); else localStorage.removeItem(PKEY); }catch(e){} };
+const LKEY='unkou-learn-v1';
+function learnLoad(){ try{ return JSON.parse(localStorage.getItem(LKEY)||'[]'); }catch(e){ return []; } }
+// 写真の欄の切り抜きと、いま入っている数字を記録する（新しい写真・写真を消す・全部消す の直前に呼ぶ）
+function learnRows(){ // いまの写真の欄の切り抜きと、入っている数字
+  const out=[]; if(!PH||!PH.cells) return out;
+  D.rows.forEach((r,i)=>{ const c=PH.cells[i]; if(!c) return; ['arr','dep','meter'].forEach(f=>{ const img=c[f]; const v=digits(r[f]); if(!img||!v) return;
+    out.push({t:PH.t||Date.now(),f,v,auto:(r.autoV&&r.autoV[f])||'',img}); }); });
+  return out;
+}
+// 新しい写真・写真を消す・全部消す の直前に、今日の分を記録に足す
+function learnFlush(){
+  const add=learnRows(); if(!add.length) return 0; const L=learnLoad().concat(add);
+  while(L.length>1500) L.shift();
+  for(;;){ try{ localStorage.setItem(LKEY,JSON.stringify(L)); break; }catch(e){ if(L.length<10) break; L.splice(0,Math.ceil(L.length/5)); } }
+  if(PH) PH.cells=null; return add.length;
+}
+function learnExport(){
+  const L=learnLoad().concat(learnRows()); if(!L.length) return 0;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(L)],{type:'application/json'}));
+  a.download='nippo-yomitori-kiroku-'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); a.remove(); return L.length;
+}
 const fresh=()=>({start:'',end:'',rows:[newRow(),newRow(),newRow()],rests:[{from:'',to:''}],waits:[{from:'',to:''}]});
 let D=null; try{ D=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
 if(!D||!Array.isArray(D.rows)) D=fresh();
@@ -213,7 +234,8 @@ function render(){
   });
   $('rows').innerHTML=h;
   $('mS').value=D.start; $('mE').value=D.end;
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターは上の「メーター」欄に全部の桁を入れてください。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button></div></div>`:'';
+  const ah=D.autoHead||{}; [['mS','start'],['mE','end']].forEach(([id,f])=>{ $(id).classList.toggle('auto',ah[f]===1); $(id).classList.toggle('maybe',ah[f]===2); });
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -242,6 +264,7 @@ document.addEventListener('input',e=>{
   const t=e.target, f=t.dataset.f; if(!f) return;
   listOf(t)[f]=t.value;
   if(t.dataset.r!=null){ const r=D.rows[+t.dataset.r]; if(r.auto&&r.auto[f]){ delete r.auto[f]; t.classList.remove('auto','maybe'); } }
+  if(t.dataset.k!=null&&D.autoHead&&D.autoHead[f]){ delete D.autoHead[f]; t.classList.remove('auto','maybe'); }
   save(); update();
 });
 document.addEventListener('change',e=>{
@@ -263,10 +286,11 @@ document.addEventListener('click',e=>{
   else if(b.id==='addW'){ D.waits.push({from:'',to:''}); save(); render(); }
   else if(b.id==='photoBtn'){ $('photoIn').value=''; $('photoIn').click(); }
   else if(b.id==='camBtn'){ $('camIn').value=''; $('camIn').click(); }
-  else if(b.id==='photoDel'){ PH=null; savePH(); render(); }
+  else if(b.id==='photoDel'){ learnFlush(); PH=null; savePH(); render(); }
+  else if(b.id==='learnExp'){ const n=learnExport(); $('busy').textContent=n?`読み取りの記録 ${n}件をファイルに書き出しました。`:'まだ記録がありません。'; }
   else if(b.id==='clear'){
     const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">入力を全部消して、新しい日にしますか？</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">消す</button></div></div>`; m.hidden=false;
-    $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; D=fresh(); PH=null; savePH(); save(); render(); scrollTo(0,0); };
+    $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; learnFlush(); D=fresh(); PH=null; savePH(); save(); render(); scrollTo(0,0); };
   }
 });
 const onPhoto=async e=>{
@@ -277,20 +301,30 @@ const onPhoto=async e=>{
   $('busy').textContent='';
   if(!res.ok){ $('busy').textContent=res.empty?'書いてある行が見つかりませんでした。':'用紙を見つけられませんでした。上から、用紙全体が入るように撮り直してください。'; return; }
   const apply=()=>{
+    learnFlush();   // 前の写真の分を、行を作り直す前に記録する
     D.rows=res.rows.map(r=>({arr:'',dep:'',meter:'',loaded:r.loaded}));
     if(D.rows.length<2) D.rows.push(newRow());
-    PH={rows:res.rows.map(r=>r.img),header:res.header}; savePH(); save(); render();
+    const small=cv=>{ if(!cv) return null; const h=48, w=Math.max(8,Math.round(cv.width*h/cv.height)), c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(cv,0,0,w,h); return c.toDataURL('image/jpeg',0.8); };
+    PH={rows:res.rows.map(r=>r.img),header:res.header,t:Date.now(),
+      cells:res.rows.map(r=>({arr:r.hasArr?small(r.ocr.arr.A):null,dep:r.hasDep?small(r.ocr.dep.A):null,meter:small(r.ocr.meter.C||r.ocr.meter.A)}))}; savePH(); save(); render();
     $('photoTop').scrollIntoView({behavior:'smooth',block:'start'});
-    if($('ocrOn').checked) readDigits(res.rows);
+    if($('ocrOn').checked) readDigits(res.rows,res.head);
   };
   const used=D.rows.some(r=>digits(r.arr)||digits(r.dep)||digits(r.meter));
   if(!used){ apply(); return; }
   const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">いま入っている運行記録を消して、写真の${res.rows.length}行に作り直しますか？（待機はそのまま）</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">作り直す</button></div></div>`; m.hidden=false;
   $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; apply(); };
 };
-async function readDigits(prow){
+async function readDigits(prow,head){
   const rowsAt=D.rows; // 読んでいる間に作り直されたら反映しない
   try{
+    const prog=p=>{ $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:'始業・終業メーターを読み取っています…'; };
+    // 始業・終業メーター（空欄のときだけ入れる）
+    let hn='';
+    if(head&&(!digits(D.start)||!digits(D.end))){ const h=await window.NippoOCR.readHead(head,prog);
+      if(D.rows!==rowsAt){ $('busy').textContent=''; return; }
+      if(h&&h.start){ D.autoHead=D.autoHead||{}; if(!digits(D.start)){ D.start=h.start.v; D.autoHead.start=h.start.tier==='blue'?1:2; } if(!digits(D.end)){ D.end=h.end.v; D.autoHead.end=h.end.tier==='blue'?1:2; }
+        hn=h.checked?'始業・終業メーターは走行粁と合いました（青）。':'始業・終業メーターは走行粁で確かめられなかったので黄色です。'; save(); render(); } }
     const {res}=await window.NippoOCR.readRows(prow,{start:D.start,end:D.end},p=>{
       $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:`数字を読み取っています… ${Math.round(p.done/p.total*100)}%`; });
     if(D.rows!==rowsAt){ $('busy').textContent=''; return; }
@@ -299,9 +333,9 @@ async function readDigits(prow){
       ['arr','dep','meter'].forEach(f=>{ const x=r[f]; if(!x||digits(row[f])) return;
         if(f==='meter'&&i===0&&digits(D.start)) return;              // 最初の行は始業メーターを使う
         if(f==='meter'&&i===D.rows.length-1&&digits(D.end)) return;   // 最後の行は終業メーターを使う
-        row[f]=x.v; row.auto[f]=x.tier==='blue'?1:2; x.tier==='blue'?n++:nm++; }); });
+        row[f]=x.v; row.auto[f]=x.tier==='blue'?1:2; row.autoV=row.autoV||{}; row.autoV[f]=digits(x.v); x.tier==='blue'?n++:nm++; }); });
     save(); render();
-    $('busy').textContent=(n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。';
+    $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
   }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。'; }
 }
 try{ $('ocrOn').checked=localStorage.getItem('unkou-ocr-on')!=='0'; }catch(e){ $('ocrOn').checked=true; }

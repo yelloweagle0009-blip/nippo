@@ -168,7 +168,10 @@ async function analyze(file){
   const r1=rows[0]; let header=null;
   const hx0=X(r1,525), hx1=X(r1,790), hy0=r1.y-4.9*r1.d, hy1=r1.y-2.0*r1.d;
   if(hx0>=0&&hy0>=0&&hx1<=L.w&&hy1<=L.h) header=rectCrop(hiR,k,hx0,hy0,hx1,hy1).toDataURL('image/jpeg',0.82);
-  return {ok:true,rows:out,header,debug:{rot,angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
+  // 始業・終業メーターと走行粁の数字の部分（数字の読み取り用）。写っていなければ出さない
+  let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
+  const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
+  return {ok:true,rows:out,header,head,debug:{rot,angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();
