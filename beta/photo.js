@@ -116,7 +116,10 @@ function tightCrop(L,x0,x1,y0,y1,yc,yr,mode){
   let keep=comps.filter(c=>c.n>=minA);
   const inBand=c=>{ const a=Math.max(c.y0+y0,yc-yr/2), b2=Math.min(c.y1+y0,yc+yr/2); return Math.max(0,b2-a+1)/(c.y1-c.y0+1); };
   if(mode==='time'){ keep=keep.filter(c=>inBand(c)>=0.5&&!(c.x1-c.x0<yr*0.18&&c.y1-c.y0>yr*2.4)); }
-  else { if(!keep.length) return null; const best=keep.reduce((a,c)=>Math.abs(c.cy+y0-yc)<Math.abs(a.cy+y0-yc)?c:a); keep=keep.filter(c=>Math.abs(c.cy-best.cy)<yr*0.6); }
+  else { if(!keep.length) return null; const best=keep.reduce((a,c)=>Math.abs(c.cy+y0-yc)<Math.abs(a.cy+y0-yc)?c:a); keep=keep.filter(c=>Math.abs(c.cy-best.cy)<yr*0.6);
+    // 横に離れた塊（左横のメモ書きなど）は外し、表に一番近い（右端の）数字の塊だけを残す
+    keep.sort((p,q)=>p.x0-q.x0); const groups=[]; for(const c of keep){ const g=groups[groups.length-1]; if(g&&c.x0-g.x1<=yr*0.8){ g.items.push(c); g.x1=Math.max(g.x1,c.x1); g.n+=c.n; } else groups.push({items:[c],x1:c.x1,n:c.n}); }
+    const big=groups.filter(g=>g.n>=minA*3); const pick=(big.length?big:groups)[(big.length?big:groups).length-1]; keep=pick.items; }
   if(!keep.length) return null;
   const bx0=Math.max(0,Math.min(...keep.map(c=>c.x0))-4)+x0, bx1=Math.min(W-1,Math.max(...keep.map(c=>c.x1))+4)+x0;
   const by0=Math.max(0,Math.min(...keep.map(c=>c.y0))-4)+y0, by1=Math.min(H-1,Math.max(...keep.map(c=>c.y1))+4)+y0;
@@ -157,7 +160,7 @@ async function analyze(file){
     const view=rectCrop(hiR,k,X(r,-100),r.y-r.d*0.62,X(r,240),r.y+r.d*0.62);
     const cell=(a,b)=>({A:rectCrop(hiR,k,X(r,146),a-hb*0.25,X(r,234),b+hb*0.25), C:tightCrop(L,X(r,146),X(r,234),a-hb*0.6,b+hb*0.6,(a+b)/2,hb,'time')});
     const meterA=rectCrop(hiR,k,X(r,-60),r.y-r.d*0.75,X(r,72),r.y+r.d*0.75);
-    const meterC=tightCrop(L,X(r,-60),X(r,64),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
+    const meterC=tightCrop(L,X(r,-60),X(r,62),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
     out.push({paperRow:pr, loaded:tsumi[pr-1]>0.035, hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
       img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}}});
   }
