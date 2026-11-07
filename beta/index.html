@@ -224,6 +224,9 @@ function learnExport(){
   a.download='nippo-yomitori-kiroku-'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); a.remove(); return L.length;
 }
 const RKEY='unkou-routes-v1';
+// よく行く場所（名取さんから 2026-11-07 に聞いた一覧）。写真の店名はまずこの中から一番近いものを探す
+const BASE_PLACES=['車庫','KFKマシンセンター','国母パナソニック','KFK甲府南工場','牧野フライス勝山','牧野フライスKテック','牧野フライス富士吉田','小石和倉庫'];
+const knownPlaces=()=>{ const r=Object.keys(ROUTES.places).sort((a,b)=>ROUTES.places[b]-ROUTES.places[a]); return r.concat(BASE_PLACES.filter(p=>!r.includes(p))); };
 let ROUTES={places:{},seg:{}}; try{ const x=JSON.parse(localStorage.getItem(RKEY)||'null'); if(x&&x.places&&x.seg) ROUTES=x; }catch(e){}
 const saveRoutes=()=>{ try{ localStorage.setItem(RKEY,JSON.stringify(ROUTES)); }catch(e){} };
 const pname=v=>String(v||'').trim().replace(/\s+/g,' ');
@@ -267,10 +270,10 @@ function render(){
     if(i<D.rows.length-1) h+=`<div class="seg"><div><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span></div></div>`;
   });
   $('rows').innerHTML=h;
-  $('placeList').innerHTML=Object.keys(ROUTES.places).sort((a,b)=>ROUTES.places[b]-ROUTES.places[a]).map(p=>`<option value="${esc(p)}">`).join('');
+  $('placeList').innerHTML=knownPlaces().map(p=>`<option value="${esc(p)}">`).join('');
   $('mS').value=D.start; $('mE').value=D.end;
   const ah=D.autoHead||{}; [['mS','start'],['mE','end']].forEach(([id,f])=>{ $(id).classList.toggle('auto',ah[f]===1); $(id).classList.toggle('maybe',ah[f]===2); });
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、前に入れた場所の中から一番近いものを入れます（初めての店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、よく行く場所と前に入れた場所の中から一番近いものを入れます（一覧に無い店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -389,7 +392,7 @@ async function readDigits(prow,head){
     // 店名（空欄のときだけ）
     let pn=0,pm=0;
     try{
-      const known=Object.keys(ROUTES.places);
+      const known=knownPlaces();
       const pl=await window.NippoOCR.readPlaces(prow,known,()=>{ $('busy').textContent='店名を読み取っています…'; });
       if(D.rows===rowsAt) pl.forEach((x,i)=>{ const row=D.rows[i]; if(!x||!row||pname(row.place)) return; row.place=x.name; row.auto=row.auto||{}; row.auto.place=x.tier==='blue'?1:2; if(x.raw) row.placeRaw=1; x.tier==='blue'?pn++:pm++; });
     }catch(e){}
@@ -406,8 +409,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=13"></script>
-<script src="ocr.js?v=13"></script>
+<script src="photo.js?v=14"></script>
+<script src="ocr.js?v=14"></script>
 
 </body>
 </html>
