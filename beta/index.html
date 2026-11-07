@@ -291,19 +291,15 @@ const onPhoto=async e=>{
 async function readDigits(prow){
   const rowsAt=D.rows; // 読んでいる間に作り直されたら反映しない
   try{
-    const {res}=await window.NippoOCR.readRows(prow,p=>{
+    const {res}=await window.NippoOCR.readRows(prow,{start:D.start,end:D.end},p=>{
       $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:`数字を読み取っています… ${Math.round(p.done/p.total*100)}%`; });
     if(D.rows!==rowsAt){ $('busy').textContent=''; return; }
     let n=0,nm=0;
-    // メーターは前の値から戻ったり、何百kmも飛んだりしない（下3桁で比べる）
-    let prevM=digits(D.start)?Number(digits(D.start).slice(-3)):null;
     res.forEach((r,i)=>{ const row=D.rows[i]; if(!row) return; row.auto=row.auto||{};
-      ['arr','dep'].forEach(f=>{ const x=r[f]; if(x&&x.n>=2&&!digits(row[f])){ row[f]=x.v; row.auto[f]=x.n>=4?1:2; x.n>=4?n++:nm++; } });
-      if(digits(row.meter)){ prevM=Number(digits(row.meter).slice(-3)); return; }
-      const x=r.meter; if(!x||x.n<2) return; const v=Number(x.v);
-      if(prevM!=null){ const dd=(v-prevM+1000)%1000; if(dd>300) return; }
-      if(i===0&&digits(D.start)) return;
-      row.meter=x.v; row.auto.meter=x.n>=3?1:2; x.n>=3?n++:nm++; prevM=v; });
+      ['arr','dep','meter'].forEach(f=>{ const x=r[f]; if(!x||digits(row[f])) return;
+        if(f==='meter'&&i===0&&digits(D.start)) return;              // 最初の行は始業メーターを使う
+        if(f==='meter'&&i===D.rows.length-1&&digits(D.end)) return;   // 最後の行は終業メーターを使う
+        row[f]=x.v; row.auto[f]=x.tier==='blue'?1:2; x.tier==='blue'?n++:nm++; }); });
     save(); render();
     $('busy').textContent=(n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。';
   }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。'; }
