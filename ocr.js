@@ -87,24 +87,73 @@ async function readRows(rows,opt,onProg){
       if(r){ list.push({s:E.k+vn,t:r.free.t,m:r.free.m}); list.push({s:E.k+vn+'d',t:r.digit.t,m:r.digit.m}); }
       done++; onProg&&onProg({phase:'read',done,total}); }
     reads[i+'_'+f]=list; }
-  // 決める：時刻は前の欄より後、メーターは前の値から戻らず300km以上飛ばず、終業メーターを越えない
-  const lower3=v=>{ const d=String(v||'').replace(/\D/g,''); return d?Number(d.slice(-3)):null; };
+  return {res:decide(rows.length,reads,opt,W,TH),reads};
+}
+const lower3=v=>{ const d=String(v||'').replace(/\D/g,''); return d?Number(d.slice(-3)):null; };
+// 1つの欄の候補（値→重みの合計）。時刻は先頭の「1」の読み落としを補った候補も少し軽く足す。メーターは4桁以上なら下3桁も候補にする
+function candidates(list,isM,Wt){
+  const sc={};
+  for(const c of list){ const w=Wt[(isM?'M':'T')+c.s]||0; if(!w||c.m<0.5) continue; const d=half(c.t).replace(/\D/g,'');
+    if(isM){ if(d.length===3) sc[d]=(sc[d]||0)+w; else if(d.length>3){ const v=d.slice(-3); sc[v]=(sc[v]||0)+w*0.8; } }
+    else { const v=asTime(c.t,c.m); if(!v) continue; sc[v]=(sc[v]||0)+w;
+      if(v.length===3){ const v2='1'+v; if(asTime(v2,1)) sc[v2]=(sc[v2]||0)+w*0.9; } } }
+  return Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+}
+function tierOf(v,cand,th){ const e=cand.find(c=>c[0]===v); if(!e) return '';
+  const rel=x=>x===v||x==='1'+v||v==='1'+x;   // 「1」を補った候補とその元は、張り合う相手として数えない
+  const s=e[1], others=cand.filter(c=>!rel(c[0])), s2=Math.max(0,...others.map(c=>c[1]));
+  const top=cand.filter(c=>!others.includes(c)||c[0]===v).length&&(others.length===0||s>=others[0][1]);
+  if(top&&s>=th.blue&&s-s2>=th.gap) return 'blue'; return s>=th.yel?'yellow':''; }
+// 全部の行をまとめて決める：メーターは前から戻らず・300km以上飛ばず・終業メーターを越えない組み合わせ、
+// 時刻は順に進み、メーターの差に対して速すぎない（時速90km以下）組み合わせのうち、重みの合計が一番大きいものを選ぶ
+function decide(n,reads,opt,Wt,T){
+  Wt=Wt||W; T=T||TH; opt=opt||{};
+  const res=Array.from({length:n},()=>({}));
+  const sM=lower3(opt.start), eM=lower3(opt.end);
+  // メーター
+  const mc=[]; for(let i=0;i<n;i++){ if(i===0&&sM!=null) continue; if(i===n-1&&eM!=null&&i>0) continue; const l=reads[i+'_meter']; if(l) mc.push({i,cand:candidates(l,true,Wt).slice(0,5)}); }
+  const okM=(last,v)=>{ if(last==null) return true; const d=(v-last+1000)%1000; if(d>300) return false; if(eM!=null&&d>((eM-last+1000)%1000)) return false; return true; };
+  let st=new Map([[String(sM),{sc:0,last:sM,path:[]}]]);
+  for(const c of mc){ const nx=new Map(); const put=(k,o)=>{ const p=nx.get(k); if(!p||o.sc>p.sc) nx.set(k,o); };
+    for(const o of st.values()){ put(String(o.last),{sc:o.sc,last:o.last,path:o.path.concat([null])});
+      for(const [v,s] of c.cand){ const x=+v; if(okM(o.last,x)) put(String(x),{sc:o.sc+s,last:x,path:o.path.concat([v])}); } }
+    st=nx; }
+  const bestM=[...st.values()].sort((a,b)=>b.sc-a.sc)[0];
+  const meterAt={}; if(sM!=null) meterAt[0]=sM; if(eM!=null&&n>1) meterAt[n-1]=eM;
+  mc.forEach((c,j)=>{ const v=bestM.path[j]; if(v==null) return; meterAt[c.i]=+v; const t=tierOf(v,c.cand,T.m); if(t) res[c.i].meter={v,tier:t,score:+(c.cand.find(e=>e[0]===v)[1]).toFixed(1)}; });
+  // 時刻
+  const tc=[]; for(let i=0;i<n;i++) for(const f of ['arr','dep']){ const l=reads[i+'_'+f]; if(l) tc.push({i,f,cand:candidates(l,false,Wt).slice(0,5)}); }
+  const okT=(o,c,m)=>{ if(o.last==null) return true; if(m<o.last) return false;
+    if(c.f==='arr'&&o.cell&&o.cell.f==='dep'&&o.cell.i===c.i-1&&meterAt[c.i-1]!=null&&meterAt[c.i]!=null){ const km=(meterAt[c.i]-meterAt[c.i-1]+1000)%1000; if((m-o.last)*1.5<km) return false; }
+    return true; };
+  st=new Map([['s',{sc:0,last:null,cell:null,path:[]}]]);
+  for(const c of tc){ const nx=new Map(); const put=(k,o)=>{ const p=nx.get(k); if(!p||o.sc>p.sc) nx.set(k,o); };
+    for(const o of st.values()){ put(o.last+'|'+(o.cell?o.cell.i+o.cell.f:''),{sc:o.sc,last:o.last,cell:o.cell,path:o.path.concat([null])});
+      for(const [v,s] of c.cand){ const m=mins(v); if(okT(o,c,m)) put(m+'|'+c.i+c.f,{sc:o.sc+s,last:m,cell:c,path:o.path.concat([v])}); } }
+    st=nx; }
+  const bestT=[...st.values()].sort((a,b)=>b.sc-a.sc)[0];
+  tc.forEach((c,j)=>{ const v=bestT.path[j]; if(v==null) return; const t=tierOf(v,c.cand,T.t); if(t) res[c.i][c.f]={v:v.slice(0,-2)+':'+v.slice(-2),tier:t,score:+(c.cand.find(e=>e[0]===v)[1]).toFixed(1)}; });
+  return res;
+}
+// 前の版の決め方（比べるために残す）：前から順に1欄ずつ、青で決めた値だけを次の点検に使う
+function decideOld(n,reads,opt,Wt,T){
+  Wt=Wt||W; T=T||TH; opt=opt||{};
   let prevT=-1, prevM=lower3(opt.start); const endM=lower3(opt.end);
-  const res=rows.map(()=>({}));
-  rows.forEach((r,i)=>{ ['arr','dep','meter'].forEach(f=>{ const list=reads[i+'_'+f]; if(!list) return; const isM=f==='meter';
+  const res=Array.from({length:n},()=>({}));
+  for(let i=0;i<n;i++){ ['arr','dep','meter'].forEach(f=>{ const list=reads[i+'_'+f]; if(!list) return; const isM=f==='meter';
       const sc={};
-      for(const c of list){ let v=isM?asMeter(c.t,c.m):asTime(c.t,c.m); if(!v) continue; const w=W[(isM?'M':'T')+c.s]||0; if(!w) continue;
-        if(!isM&&v.length===3&&prevT>=0&&mins(v)<prevT){ const v2='1'+v; if(asTime(v2,1)&&mins(v2)>=prevT) v=v2; } // 先頭の「1」の読み落としを補う
+      for(const c of list){ let v=isM?asMeter(c.t,c.m):asTime(c.t,c.m); if(!v) continue; const w=Wt[(isM?'M':'T')+c.s]||0; if(!w) continue;
+        if(!isM&&v.length===3&&prevT>=0&&mins(v)<prevT){ const v2='1'+v; if(asTime(v2,1)&&mins(v2)>=prevT) v=v2; }
         sc[v]=(sc[v]||0)+w; }
       let cand=Object.entries(sc).sort((a,b)=>b[1]-a[1]);
       if(!isM) cand=cand.filter(([v])=>mins(v)>=prevT);
       else { if(prevM!=null) cand=cand.filter(([v])=>((+v-prevM+1000)%1000)<=300); if(prevM!=null&&endM!=null) cand=cand.filter(([v])=>((+v-prevM+1000)%1000)<=((endM-prevM+1000)%1000)); }
       if(!cand.length) return;
-      const [v,s]=cand[0], s2=cand[1]?cand[1][1]:0, th=isM?TH.m:TH.t;
+      const [v,s]=cand[0], s2=cand[1]?cand[1][1]:0, th=isM?T.m:T.t;
       let tier=''; if(s>=th.blue&&s-s2>=th.gap) tier='blue'; else if(s>=th.yel) tier='yellow'; if(!tier) return;
       res[i][f]={v:isM?v:v.slice(0,-2)+':'+v.slice(-2),tier,score:+s.toFixed(1)};
-      if(tier==='blue'){ if(isM) prevM=+v; else prevT=mins(v); } }); });
-  return {res,reads};
+      if(tier==='blue'){ if(isM) prevM=+v; else prevT=mins(v); } }); }
+  return res;
 }
-window.NippoOCR={load,readRows};
+window.NippoOCR={load,readRows,decide,decideOld,W,TH};
 })();
