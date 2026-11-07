@@ -61,6 +61,11 @@ input.ng{border-color:var(--warn);background:var(--warn-soft)}
 .warn:empty{display:none}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
 .modal>div{background:var(--sheet);border-radius:10px;padding:16px;max-width:340px;width:100%}
+.crop{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:6px;margin:10px 0 4px;background:#fff}
+.photo{background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;margin-top:10px}
+.photo p{margin:0}
+.busy{font-size:13px;color:var(--accent);margin:8px 0 0}
+.busy:empty{display:none}
 </style>
 
 </head>
@@ -76,6 +81,9 @@ input.ng{border-color:var(--warn);background:var(--warn-soft)}
 <main><div class="pad">
   <p class="note" style="margin-top:0">紙のメモを、日報の運行記録と同じ行番号で打ち込みます。時刻は「845」のように数字だけ、メーターは下3桁だけで足ります。荷を積んで走った区間は「実車」に切り替えてください。</p>
   <h2>運行記録</h2>
+  <div class="btns" style="margin:0 0 6px"><button class="btn" id="photoBtn">写真から行を作る</button><input type="file" id="photoIn" accept="image/*" hidden></div>
+  <p class="busy" id="busy"></p>
+  <div id="photoTop"></div>
   <div class="head"><span></span><span>着</span><span>発</span><span>メーター</span><span></span></div>
   <div id="rows"></div>
   <div class="btns"><button class="btn solid" id="add">＋ 行を足す</button></div>
@@ -152,6 +160,9 @@ const KEY='unkou-jissha-v2';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const newRow=()=>({arr:'',dep:'',meter:'',loaded:false});
+const PKEY='unkou-photo-v1';
+let PH=null; try{ PH=JSON.parse(localStorage.getItem(PKEY)||'null'); }catch(e){}
+const savePH=()=>{ try{ if(PH) localStorage.setItem(PKEY,JSON.stringify(PH)); else localStorage.removeItem(PKEY); }catch(e){} };
 const fresh=()=>({rows:[newRow(),newRow(),newRow()],rests:[{from:'',to:''}],waits:[{from:'',to:''}]});
 let D=null; try{ D=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
 if(!D||!Array.isArray(D.rows)) D=fresh();
@@ -162,6 +173,7 @@ const fmt=m=>m==null?'—':Math.floor(m/60)+'時間'+(m%60)+'分';
 function render(){
   let h='';
   D.rows.forEach((r,i)=>{
+    if(PH&&PH.rows&&PH.rows[i]) h+=`<img class="crop" src="${PH.rows[i]}" alt="写真の${i+2}行目">`;
     h+=`<div class="row"><span class="no">${i+2}</span>
       <input id="r${i}a" data-r="${i}" data-f="arr" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
       <input id="r${i}d" data-r="${i}" data-f="dep" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発">
@@ -170,6 +182,7 @@ function render(){
     if(i<D.rows.length-1) h+=`<div class="seg"><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span></div>`;
   });
   $('rows').innerHTML=h;
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真を見ながら数字を打ってください。最初の行のメーターは<b>始業メーター</b>、最後の行は<b>終業メーター</b>の下3桁です。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p><img class="crop" src="${PH.header}" alt="写真の始業・終業メーター"><div class="btns"><button class="btn" id="photoDel">写真を消す</button></div></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -213,15 +226,36 @@ document.addEventListener('click',e=>{
   else if(b.id==='add'){ D.rows.push(newRow()); save(); render(); $('r'+(D.rows.length-1)+'a').focus(); }
   else if(d.wdel!=null){ D.waits.splice(+d.wdel,1); save(); render(); }
   else if(b.id==='addW'){ D.waits.push({from:'',to:''}); save(); render(); }
+  else if(b.id==='photoBtn'){ $('photoIn').value=''; $('photoIn').click(); }
+  else if(b.id==='photoDel'){ PH=null; savePH(); render(); }
   else if(b.id==='clear'){
     const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">入力を全部消して、新しい日にしますか？</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">消す</button></div></div>`; m.hidden=false;
-    $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; D=fresh(); save(); render(); scrollTo(0,0); };
+    $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; D=fresh(); PH=null; savePH(); save(); render(); scrollTo(0,0); };
   }
+});
+$('photoIn').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  $('busy').textContent='写真を読み取っています…';
+  await new Promise(r=>setTimeout(r,30));
+  let res; try{ res=await window.NippoPhoto.analyze(f); }catch(err){ res={ok:false}; }
+  $('busy').textContent='';
+  if(!res.ok){ $('busy').textContent=res.empty?'書いてある行が見つかりませんでした。':'用紙を見つけられませんでした。上から、用紙全体が入るように撮り直してください。'; return; }
+  const apply=()=>{
+    D.rows=res.rows.map(r=>({arr:'',dep:'',meter:'',loaded:r.loaded}));
+    if(D.rows.length<2) D.rows.push(newRow());
+    PH={rows:res.rows.map(r=>r.img),header:res.header}; savePH(); save(); render();
+    $('photoTop').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  const used=D.rows.some(r=>digits(r.arr)||digits(r.dep)||digits(r.meter));
+  if(!used){ apply(); return; }
+  const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">いま入っている運行記録を消して、写真の${res.rows.length}行に作り直しますか？（待機はそのまま）</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">作り直す</button></div></div>`; m.hidden=false;
+  $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; apply(); };
 });
 render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
+<script src="photo.js"></script>
 
 </body>
 </html>
