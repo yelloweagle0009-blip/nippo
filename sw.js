@@ -1,5 +1,5 @@
 // 運行日報：ページを端末に保存して、電波が無くても開けるようにする
-const C='unkou-v9';
+const C='unkou-v10';
 const FILES=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png','photo.js','ocr.js'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(C).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())); });
 // 古い版のページだけ消す（数字を読む部品 nippo-ocr-* は残す）

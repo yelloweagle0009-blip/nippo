@@ -155,5 +155,23 @@ function decideOld(n,reads,opt,Wt,T){
       if(tier==='blue'){ if(isM) prevM=+v; else prevT=mins(v); } }); }
   return res;
 }
-window.NippoOCR={load,readRows,decide,decideOld,W,TH};
+// 始業・終業メーターと走行粁を読む。終業−始業＝走行粁 になる組み合わせが見つかれば両方を青、
+// 見つからなくても終業＞始業で差が1000km未満なら黄、それ以外は入れない
+async function readHead(head,onProg){
+  if(!head) return null;
+  const eng=await load(b=>onProg&&onProg({phase:'download',bytes:b}));
+  const vote=async(cv,lens)=>{ if(!cv) return []; const V={A:cv,Ae:enh(cv),Ap:pad(cv,0.3)}; const sc={};
+    for(const E of eng) for(const v of Object.values(V)){ let r=null; try{ r=await recBoth(E,v); }catch(e){}
+      if(!r) continue; for(const x of [r.free,r.digit]){ if(x.m<0.5) continue; const d=half(x.t).replace(/\D/g,''); if(lens.includes(d.length)) sc[d]=(sc[d]||0)+1; } }
+    return Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,4); };
+  const S=await vote(head.start,[6,7]), En=await vote(head.end,[6,7]), T=await vote(head.total,[1,2,3,4]);
+  let best=null;
+  for(const [sv,ss] of S) for(const [ev,es] of En){ const diff=+ev-+sv; if(!(diff>0&&diff<1000)) continue;
+    const tm=T.find(([tv])=>+tv===diff); const sc=ss+es+(tm?tm[1]+20:0);
+    if(!best||sc>best.sc) best={sc,start:sv,end:ev,checked:!!tm}; }
+  if(!best) return {S,En,T};
+  const tier=best.checked?'blue':'yellow';
+  return {start:{v:best.start,tier},end:{v:best.end,tier},total:best.end-best.start,checked:best.checked,S,En,T};
+}
+window.NippoOCR={load,readRows,readHead,decide,decideOld,W,TH};
 })();
