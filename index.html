@@ -54,6 +54,13 @@ input{font:inherit;font-family:var(--f-num);font-variant-numeric:tabular-nums;fo
 input::placeholder{color:var(--muted);opacity:.6}
 input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 input.ng{border-color:var(--warn);background:var(--warn-soft)}
+input.auto{border-color:#3d74b8;background:#e4eefb}
+input.maybe{border-color:#c79a1d;background:#fdf3d6}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) input.auto{background:#1b2c44;border-color:#6d9bd6} :root:not([data-theme="light"]) input.maybe{background:#3a3014;border-color:#d9b44a}}
+:root[data-theme="dark"] input.auto{background:#1b2c44;border-color:#6d9bd6}
+:root[data-theme="dark"] input.maybe{background:#3a3014;border-color:#d9b44a}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted);margin:6px 0 0}
+.chk input{width:auto;margin-top:3px}
 .x{border:0;background:transparent;color:var(--muted);font:inherit;font-size:18px;padding:0}
 .seg{margin:6px 0;font-size:13px;color:var(--muted)}
 .seg>div{grid-column:1/4;display:flex;align-items:center;gap:8px}
@@ -96,6 +103,7 @@ input.ng{border-color:var(--warn);background:var(--warn-soft)}
   </div>
   <h2>運行記録</h2>
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
+  <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。最初の1回だけ約45MBダウンロードします）</span></label>
   <p class="busy" id="busy"></p>
   <div id="photoTop"></div>
   <div class="head"><span>メーター（欄外）</span><span></span><span>上が着・下が発</span><span></span></div>
@@ -196,16 +204,16 @@ function render(){
   D.rows.forEach((r,i)=>{
     if(PH&&PH.rows&&PH.rows[i]) h+=`<img class="crop" src="${PH.rows[i]}" alt="写真の${i+2}行目">`;
     h+=`<div class="row">
-      <input id="r${i}m" data-r="${i}" data-f="meter" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.meter)}" aria-label="${i+2}行目 メーター">
+      <input id="r${i}m" data-r="${i}" data-f="meter" class="${r.auto&&r.auto.meter?(r.auto.meter===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.meter)}" aria-label="${i+2}行目 メーター">
       <span class="no">${i+2}</span>
-      <div class="tm"><i>着</i><input id="r${i}a" data-r="${i}" data-f="arr" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
-        <i>発</i><input id="r${i}d" data-r="${i}" data-f="dep" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発"></div>
+      <div class="tm"><i>着</i><input id="r${i}a" data-r="${i}" data-f="arr" class="${r.auto&&r.auto.arr?(r.auto.arr===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
+        <i>発</i><input id="r${i}d" data-r="${i}" data-f="dep" class="${r.auto&&r.auto.dep?(r.auto.dep===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発"></div>
       <button class="x" data-del="${i}" aria-label="${i+2}行目を消す">×</button></div>`;
     if(i<D.rows.length-1) h+=`<div class="seg"><div><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span></div></div>`;
   });
   $('rows').innerHTML=h;
   $('mS').value=D.start; $('mE').value=D.end;
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真を見ながら数字を打ってください。始業・終業メーターは上の「メーター」欄に全部の桁を入れてください。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p><img class="crop" src="${PH.header}" alt="写真の始業・終業メーター"><div class="btns"><button class="btn" id="photoDel">写真を消す</button></div></div>`:'';
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターは上の「メーター」欄に全部の桁を入れてください。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は「積荷個数」に書いてある行から決めています。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button></div></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -233,6 +241,7 @@ function update(){
 document.addEventListener('input',e=>{
   const t=e.target, f=t.dataset.f; if(!f) return;
   listOf(t)[f]=t.value;
+  if(t.dataset.r!=null){ const r=D.rows[+t.dataset.r]; if(r.auto&&r.auto[f]){ delete r.auto[f]; t.classList.remove('auto','maybe'); } }
   save(); update();
 });
 document.addEventListener('change',e=>{
@@ -272,12 +281,35 @@ const onPhoto=async e=>{
     if(D.rows.length<2) D.rows.push(newRow());
     PH={rows:res.rows.map(r=>r.img),header:res.header}; savePH(); save(); render();
     $('photoTop').scrollIntoView({behavior:'smooth',block:'start'});
+    if($('ocrOn').checked) readDigits(res.rows);
   };
   const used=D.rows.some(r=>digits(r.arr)||digits(r.dep)||digits(r.meter));
   if(!used){ apply(); return; }
   const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">いま入っている運行記録を消して、写真の${res.rows.length}行に作り直しますか？（待機はそのまま）</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">作り直す</button></div></div>`; m.hidden=false;
   $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; apply(); };
 };
+async function readDigits(prow){
+  const rowsAt=D.rows; // 読んでいる間に作り直されたら反映しない
+  try{
+    const {res}=await window.NippoOCR.readRows(prow,p=>{
+      $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:`数字を読み取っています… ${Math.round(p.done/p.total*100)}%`; });
+    if(D.rows!==rowsAt){ $('busy').textContent=''; return; }
+    let n=0,nm=0;
+    // メーターは前の値から戻ったり、何百kmも飛んだりしない（下3桁で比べる）
+    let prevM=digits(D.start)?Number(digits(D.start).slice(-3)):null;
+    res.forEach((r,i)=>{ const row=D.rows[i]; if(!row) return; row.auto=row.auto||{};
+      ['arr','dep'].forEach(f=>{ const x=r[f]; if(x&&x.n>=2&&!digits(row[f])){ row[f]=x.v; row.auto[f]=x.n>=4?1:2; x.n>=4?n++:nm++; } });
+      if(digits(row.meter)){ prevM=Number(digits(row.meter).slice(-3)); return; }
+      const x=r.meter; if(!x||x.n<2) return; const v=Number(x.v);
+      if(prevM!=null){ const dd=(v-prevM+1000)%1000; if(dd>300) return; }
+      if(i===0&&digits(D.start)) return;
+      row.meter=x.v; row.auto.meter=x.n>=3?1:2; x.n>=3?n++:nm++; prevM=v; });
+    save(); render();
+    $('busy').textContent=(n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。';
+  }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。'; }
+}
+try{ $('ocrOn').checked=localStorage.getItem('unkou-ocr-on')!=='0'; }catch(e){ $('ocrOn').checked=true; }
+$('ocrOn').addEventListener('change',e=>{ try{ localStorage.setItem('unkou-ocr-on',e.target.checked?'1':'0'); }catch(err){} });
 $('photoIn').addEventListener('change',onPhoto);
 $('camIn').addEventListener('change',onPhoto);
 render();
@@ -285,6 +317,7 @@ render();
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
 <script src="photo.js"></script>
+<script src="ocr.js"></script>
 
 </body>
 </html>
