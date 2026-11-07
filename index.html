@@ -81,7 +81,7 @@ input.ng{border-color:var(--warn);background:var(--warn-soft)}
 <main><div class="pad">
   <p class="note" style="margin-top:0">紙のメモを、日報の運行記録と同じ行番号で打ち込みます。時刻は「845」のように数字だけ、メーターは下3桁だけで足ります。荷を積んで走った区間は「実車」に切り替えてください。</p>
   <h2>運行記録</h2>
-  <div class="btns" style="margin:0 0 6px"><button class="btn" id="photoBtn">写真から行を作る</button><input type="file" id="photoIn" accept="image/*" hidden></div>
+  <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <p class="busy" id="busy"></p>
   <div id="photoTop"></div>
   <div class="head"><span></span><span>着</span><span>発</span><span>メーター</span><span></span></div>
@@ -227,13 +227,14 @@ document.addEventListener('click',e=>{
   else if(d.wdel!=null){ D.waits.splice(+d.wdel,1); save(); render(); }
   else if(b.id==='addW'){ D.waits.push({from:'',to:''}); save(); render(); }
   else if(b.id==='photoBtn'){ $('photoIn').value=''; $('photoIn').click(); }
+  else if(b.id==='camBtn'){ $('camIn').value=''; $('camIn').click(); }
   else if(b.id==='photoDel'){ PH=null; savePH(); render(); }
   else if(b.id==='clear'){
     const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">入力を全部消して、新しい日にしますか？</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">消す</button></div></div>`; m.hidden=false;
     $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; D=fresh(); PH=null; savePH(); save(); render(); scrollTo(0,0); };
   }
 });
-$('photoIn').addEventListener('change',async e=>{
+const onPhoto=async e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
   $('busy').textContent='写真を読み取っています…';
   await new Promise(r=>setTimeout(r,30));
@@ -250,7 +251,9 @@ $('photoIn').addEventListener('change',async e=>{
   if(!used){ apply(); return; }
   const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">いま入っている運行記録を消して、写真の${res.rows.length}行に作り直しますか？（待機はそのまま）</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">作り直す</button></div></div>`; m.hidden=false;
   $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; apply(); };
-});
+};
+$('photoIn').addEventListener('change',onPhoto);
+$('camIn').addEventListener('change',onPhoto);
 render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
