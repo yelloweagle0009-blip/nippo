@@ -91,6 +91,8 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
 .photo p{margin:0}
 .busy{font-size:13px;color:var(--accent);margin:8px 0 0}
 .busy:empty{display:none}
+#progBar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--accent);color:#fff;font-size:14px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -2px 8px rgba(0,0,0,.25)}
+#progBar[hidden]{display:none}
 </style>
 
 </head>
@@ -115,8 +117,9 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 17</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 18</p>
   <p class="busy" id="busy"></p>
+  <div id="progBar" hidden></div>
   <div id="photoTop"></div>
   <div class="head"><span>メーター（欄外）</span><span></span><span>上が着・下が発</span><span></span></div>
   <div id="rows"></div>
@@ -374,8 +377,14 @@ const onPhoto=async e=>{
   const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">いま入っている運行記録を消して、写真の${res.rows.length}行に作り直しますか？（待機はそのまま）</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">作り直す</button></div></div>`; m.hidden=false;
   $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; apply(); };
 };
+// 読み取り中は、画面の下に進み具合を出し続ける（下までスクロールしていても見えるように）
+let READING=false;
+new MutationObserver(()=>{ if(READING){ $('progBar').hidden=false; $('progBar').textContent=$('busy').textContent||'写真の数字を読み取っています…'; } }).observe($('busy'),{childList:true,characterData:true,subtree:true});
+const RDKEY='unkou-reading';
 async function readDigits(prow,head){
   const rowsAt=D.rows; // 読んでいる間に作り直されたら反映しない
+  READING=true; $('progBar').hidden=false; $('progBar').textContent='写真の数字を読み取っています…（終わるまでこの画面を開いたままにしてください）';
+  try{ localStorage.setItem(RDKEY,String(Date.now())); }catch(e){}
   try{
     const prog=p=>{ $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:'始業・終業メーターを読み取っています…'; };
     // 始業・終業メーター（空欄のときだけ入れる）
@@ -403,8 +412,10 @@ async function readDigits(prow,head){
     save(); render();
     if(pn+pm) hn=(hn?hn+' ':'')+`店名：青 ${pn}か所・黄 ${pm}か所。`;
     $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
-  }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。'; }
-  finally{ try{ await window.NippoOCR.closeModels(); }catch(e){} }   // 読み終わったら文字を読む部品を閉じてメモリを返す
+  }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。（理由：'+String(err&&err.message||err).slice(0,80)+'）'; }
+  finally{ try{ await window.NippoOCR.closeModels(); }catch(e){}   // 読み終わったら文字を読む部品を閉じてメモリを返す
+    READING=false; try{ localStorage.removeItem(RDKEY); }catch(e){}
+    $('progBar').textContent='読み取りが終わりました：'+$('busy').textContent; setTimeout(()=>{ if(!READING) $('progBar').hidden=true; },6000); }
 }
 try{ $('ocrOn').checked=localStorage.getItem('unkou-ocr-on')!=='0'; }catch(e){ $('ocrOn').checked=true; }
 $('ocrOn').addEventListener('change',e=>{ try{ localStorage.setItem('unkou-ocr-on',e.target.checked?'1':'0'); }catch(err){} if(e.target.checked) prepParts(); });
@@ -419,14 +430,16 @@ async function prepParts(){
   catch(e){ $('partsNote').textContent='文字を読む部品をダウンロードできませんでした。電波の良い所でアプリを開き直してください。'; }
 }
 window.addEventListener('load',()=>{ setTimeout(prepParts,500); });
+// 前回、読み取りの途中でページが止まった（スマホのメモリ不足などでページが読み込み直された）ときは知らせる
+try{ const t=localStorage.getItem(RDKEY); if(t){ localStorage.removeItem(RDKEY); $('busy').textContent='前回、写真の数字の読み取りが途中で止まりました（スマホのメモリが足りずにページが読み込み直された可能性があります）。ほかのアプリやタブを閉じてから、もう一度写真を選んでください。'; } }catch(e){}
 $('photoIn').addEventListener('change',onPhoto);
 $('camIn').addEventListener('change',onPhoto);
 render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=17"></script>
-<script src="ocr.js?v=17"></script>
+<script src="photo.js?v=18"></script>
+<script src="ocr.js?v=18"></script>
 
 </body>
 </html>
