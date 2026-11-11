@@ -9,7 +9,15 @@ const WebSocket = require('ws');
   ws.on('message', m => { const d = JSON.parse(m); if (d.id && wait[d.id]) { wait[d.id](d); delete wait[d.id]; } });
   const ev = (fn, arg) => new Promise((ok, ng) => { const i = ++id; wait[i] = d => { if (d.error) return ng(new Error(JSON.stringify(d.error))); const r = d.result; if (r.exceptionDetails) return ng(new Error(JSON.stringify(r.exceptionDetails).slice(0, 800))); ok(r.result.value); };
     ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: '(' + fn.toString() + ')(' + JSON.stringify(arg === undefined ? null : arg) + ')', awaitPromise: true, returnByValue: true } })); });
-  const p = { url: () => pg.url, evaluate: ev, waitForFunction: async (fn) => { for (let k = 0; k < 60; k++) { if (await ev(fn)) return; await new Promise(r => setTimeout(r, 1000)); } throw new Error('timeout'); } };
+  const diag = () => ev(() => JSON.stringify({ ready: document.readyState, title: document.title, url: location.href, scripts: [...document.scripts].map(x => x.src.split('/').pop()), ocr: !!window.NippoOCR, photo: !!window.NippoPhoto, err: window.__errs || [], text: (document.body && document.body.innerText || '').slice(0, 200) })).catch(e => 'diag-error ' + e);
+  const p = { url: () => pg.url, evaluate: ev, waitForFunction: async (fn) => {
+    for (let round = 0; round < 2; round++) {
+      for (let k = 0; k < 90; k++) { try { if (await ev(fn)) return; } catch (e) { } await new Promise(r => setTimeout(r, 1000)); }
+      console.log('WAIT', round, await diag());
+      if (round === 0) { await new Promise(ok => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method: 'Page.reload', params: {} })); }); await new Promise(r => setTimeout(r, 5000)); }
+    }
+    throw new Error('timeout'); } };
+  await ev(() => { window.__errs = window.__errs || []; window.addEventListener('error', e => window.__errs.push(String(e.message) + ' ' + (e.filename || '').split('/').pop())); return 1; }).catch(() => {});
   console.log('URL', p.url());
   if (process.argv[2] === 'offline') {
     // 電波が無い状態：画面を開き直して、画面と部品（後から増えた分も）がスマホの中から出るか
