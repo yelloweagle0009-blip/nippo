@@ -1,10 +1,17 @@
-// アプリの中の画面につないで、本物の部品で写真を読み、結果を書き出す（青・黄の数、始業・終業、店名、かかった時間）
-const { chromium } = require('playwright-core');
+// アプリの中の画面につないで（Chrome の開発用のつなぎ方：CDP）、本物の部品で読み、結果を書き出す
+const WebSocket = require('ws');
 (async () => {
-  const b = await chromium.connectOverCDP('http://127.0.0.1:9222');
-  const ctx = b.contexts()[0]; const p = ctx.pages().find(x => x.url().includes('/nippo/')) || ctx.pages()[0];
+  const list = await (await fetch('http://127.0.0.1:9222/json')).json();
+  const pg = list.find(x => x.type === 'page' && x.url.includes('/nippo/')) || list.find(x => x.type === 'page');
+  if (!pg) { console.log('FAIL: 画面が見つからない', JSON.stringify(list)); process.exit(4); }
+  const ws = new WebSocket(pg.webSocketDebuggerUrl); await new Promise((ok, ng) => { ws.on('open', ok); ws.on('error', ng); });
+  let id = 0; const wait = {};
+  ws.on('message', m => { const d = JSON.parse(m); if (d.id && wait[d.id]) { wait[d.id](d); delete wait[d.id]; } });
+  const ev = (fn, arg) => new Promise((ok, ng) => { const i = ++id; wait[i] = d => { if (d.error) return ng(new Error(JSON.stringify(d.error))); const r = d.result; if (r.exceptionDetails) return ng(new Error(JSON.stringify(r.exceptionDetails).slice(0, 800))); ok(r.result.value); };
+    ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: '(' + fn.toString() + ')(' + JSON.stringify(arg === undefined ? null : arg) + ')', awaitPromise: true, returnByValue: true } })); });
+  const p = { url: () => pg.url, evaluate: ev, waitForFunction: async (fn) => { for (let k = 0; k < 60; k++) { if (await ev(fn)) return; await new Promise(r => setTimeout(r, 1000)); } throw new Error('timeout'); } };
   console.log('URL', p.url());
-  await p.waitForFunction(() => window.NippoOCR && window.NippoPhoto, null, { timeout: 60000 });
+  await p.waitForFunction(() => !!(window.NippoOCR && window.NippoPhoto));
   const info = await p.evaluate(async () => {
     const r = await fetch('/nippo/m-app/PP-OCRv6_tiny_rec.onnx'); const n = (await r.arrayBuffer()).byteLength;
     return { ua: navigator.userAgent.slice(-40), inApp: NippoOCR.IN_APP, tinyStatus: r.status, tinyBytes: n, android: !!window.NippoAndroid, ver: window.NippoAndroid && NippoAndroid.version() };
@@ -30,5 +37,5 @@ const { chromium } = require('playwright-core');
   const ok = g(0, 'dep') === '6:05' && g(1, 'arr') === '8:40' && g(1, 'dep') === '9:00' && g(1, 'meter') === '753' && g(2, 'arr') === '17:30' && res.places.join(',') === '車庫,KFKマシンセンター,車庫';
   if (!ok) { console.log('FAIL: 読んだ値が違う'); process.exit(3); }
   console.log('PASS');
-  await b.close();
+  ws.close();
 })().catch(e => { console.log('FAIL', e && e.stack || e); process.exit(1); });
