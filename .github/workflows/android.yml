@@ -1,0 +1,95 @@
+# 運行日報 Android版を作る → エミュレーターで写真の読み取りまで試す → 合格したら「リリース」にAPKを置く
+name: android
+on:
+  workflow_dispatch:
+  push:
+    paths: ['android/**', '.github/workflows/android.yml']
+  schedule:
+    - cron: '17 3 * * 1'   # 毎週月曜：署名の鍵の保管が期限切れ（7日間使わないと消える）にならないように取り出すだけ
+permissions:
+  contents: write
+jobs:
+  keep:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with: { path: ~/.nippo-key, key: nippo-signing-key-v1 }
+      - run: ls -la ~/.nippo-key || echo "鍵が見つからない"
+  build:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 署名の鍵を取り出す
+        uses: actions/cache@v4
+        with: { path: ~/.nippo-key, key: nippo-signing-key-v1 }
+      - name: 署名の鍵（最初の1回だけ作る。合言葉もその場で作って鍵と一緒に保管する）
+        run: |
+          if [ ! -f ~/.nippo-key/nippo.jks ]; then
+            mkdir -p ~/.nippo-key
+            head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' > ~/.nippo-key/p
+            keytool -genkeypair -keystore ~/.nippo-key/nippo.jks -storetype PKCS12 -alias nippo -keyalg RSA -keysize 2048 -validity 36500 -storepass "$(cat ~/.nippo-key/p)" -keypass "$(cat ~/.nippo-key/p)" -dname "CN=Unkou Nippo App"
+            echo "新しく作った"
+          else echo "前の鍵を使う"; fi
+          echo "::add-mask::$(cat ~/.nippo-key/p)"
+          echo "NIPPO_KS=$HOME/.nippo-key/nippo.jks" >> "$GITHUB_ENV"
+          echo "NIPPO_KS_PASS=$(cat ~/.nippo-key/p)" >> "$GITHUB_ENV"
+          keytool -list -v -keystore ~/.nippo-key/nippo.jks -storepass "$(cat ~/.nippo-key/p)" | grep -i "SHA256:"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: 部品とアイコンをアプリに入れる
+        run: |
+          mkdir -p android/app/src/main/assets/m android/app/src/main/res/mipmap-xxxhdpi
+          cp m/*.onnx m/*.txt m/*.js m/*.mjs m/*.wasm android/app/src/main/assets/m/
+          cp icon-512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          ls -la android/app/src/main/assets/m
+      - name: ビルド
+        working-directory: android
+        env:
+          NIPPO_VCODE: ${{ github.run_number }}
+          NIPPO_VNAME: 1.${{ github.run_number }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+      - run: cp android/app/build/outputs/apk/release/app-release.apk unkou-nippo.apk && ls -la unkou-nippo.apk && sha256sum unkou-nippo.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: apk, path: unkou-nippo.apk }
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: apk }
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm i --no-save playwright-core@1.47.2 && mkdir -p out
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: true
+          script: bash android/test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: test-out, path: out }
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: apk }
+      - name: リリースに置く
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete app --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create app unkou-nippo.apk --repo "${{ github.repository }}" --title "運行日報 Android版 1.${{ github.run_number }}" --notes "スマホで開いて unkou-nippo.apk を押すと入れられます。文字を読む部品はアプリの中に入っているので、ダウンロードはありません。"
