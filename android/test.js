@@ -11,6 +11,16 @@ const WebSocket = require('ws');
     ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: '(' + fn.toString() + ')(' + JSON.stringify(arg === undefined ? null : arg) + ')', awaitPromise: true, returnByValue: true } })); });
   const p = { url: () => pg.url, evaluate: ev, waitForFunction: async (fn) => { for (let k = 0; k < 60; k++) { if (await ev(fn)) return; await new Promise(r => setTimeout(r, 1000)); } throw new Error('timeout'); } };
   console.log('URL', p.url());
+  if (process.argv[2] === 'offline') {
+    // 電波が無い状態：画面を開き直して、画面と部品（後から増えた分も）がスマホの中から出るか
+    await new Promise((ok, ng) => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method: 'Page.reload', params: { ignoreCache: false } })); });
+    await new Promise(r => setTimeout(r, 8000));
+    await p.waitForFunction(() => !!(window.NippoOCR && window.NippoPhoto && document.getElementById('rows')));
+    const off = await p.evaluate(async () => { const t = await (await fetch('/nippo/m-app/test-part.txt')).text(); const w = await fetch('/nippo/m-app/PP-OCRv5_mobile_rec_infer.onnx'); return { online: navigator.onLine, part: t.trim(), v5: (await w.arrayBuffer()).byteLength, title: document.title }; });
+    console.log('OFFLINE', JSON.stringify(off));
+    if (off.part !== 'nippo-ok' || off.v5 !== 16559278) { console.log('FAIL: 電波が無いと使えない'); process.exit(5); }
+    console.log('PASS'); ws.close(); return;
+  }
   await p.waitForFunction(() => !!(window.NippoOCR && window.NippoPhoto));
   const info = await p.evaluate(async () => {
     const r = await fetch('/nippo/m-app/PP-OCRv6_tiny_rec.onnx'); const n = (await r.arrayBuffer()).byteLength;
@@ -18,6 +28,10 @@ const WebSocket = require('ws');
   });
   console.log('INFO', JSON.stringify(info));
   if (!info.inApp || info.tinyStatus !== 200 || info.tinyBytes !== 4462639) { console.log('FAIL: 部品がアプリの中から出ていない'); process.exit(2); }
+  // 後から増えた部品（アプリに入っていない test-part.txt）を、ダウンロードしてアプリの中に保存できるか
+  const extra = await p.evaluate(async () => (await (await fetch('/nippo/m-app/test-part.txt')).text()).trim());
+  console.log('EXTRA', extra);
+  if (extra !== 'nippo-ok') { console.log('FAIL: 後から増えた部品を取れない'); process.exit(6); }
   // 日報の写真は公開の場所に置かないので、数字と店名を画面の中で描いて、本物の部品で読む
   const res = await p.evaluate(async () => {
     const cv = (t, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.fillStyle = '#111'; x.font = Math.round(h * 0.7) + 'px sans-serif'; x.textBaseline = 'middle'; x.fillText(t, 8, h / 2); return c; };
