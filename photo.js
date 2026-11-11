@@ -191,7 +191,7 @@ async function analyze(file,opt){
   const out=[];
   for(let pr=2;pr<=Math.max(2,lastRow);pr++){
     const r=rows[pr-1], hb=r.d/2;
-    const view=rectCrop(hiR,k,X(r,-100),r.y-r.d*0.62,X(r,240),r.y+r.d*0.62);
+    const view=rectCrop(hiR,k,X(r,-62),r.y-r.d*0.62,X(r,440),r.y+r.d*0.62);   // 行の写真：欄外のメーター〜時刻〜店名まで
     const cell=(a,b)=>({A:rectCrop(hiR,k,X(r,146),a-hb*0.25,X(r,234),b+hb*0.25), C:tightCrop(L,X(r,146),X(r,234),a-hb*0.6,b+hb*0.6,(a+b)/2,hb,'time')});
     const meterA=rectCrop(hiR,k,X(r,-60),r.y-r.d*0.75,X(r,72),r.y+r.d*0.75);
     const placeA=rectCrop(hiR,k,X(r,236),r.y-r.d*0.55,X(r,404),r.y+r.d*0.55);  // 店名欄（行の着・発をまたいで書かれる）
