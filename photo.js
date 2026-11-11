@@ -103,6 +103,10 @@ function locate(work){
   const lines=dilateV(dilateH(Uint8Array.from(hl,(v,i)=>v|vl[i]),w,h,3),w,h,3);
   return {cv,g,b,hl,lines,seps,d,ang,w,h};
 }
+// 上下の向きの点数：時刻欄の左端（印刷の「着」「発」）が右端より濃ければ正しい向き（正：0.2〜0.4、逆さ：−0.2〜−0.4）
+function upright(L){ const rows=rowsOf(L); let a=0,b=0,n=0;
+  rows.forEach(r=>{ const hb=r.d/2; [[r.y-hb,r.y],[r.y,r.y+hb]].forEach(([y0,y1])=>{ a+=frac(L,X(r,128),X(r,144),y0+hb*0.15,y1-hb*0.15); b+=frac(L,X(r,211),X(r,227),y0+hb*0.15,y1-hb*0.15); n++; }); });
+  return n?(a-b)/n:0; }
 function rowsOf(L){
   return L.seps.map(([x0,x1,y],i)=>{ const nb=[i-1,i+1].filter(j=>j>=0&&j<16).map(j=>Math.abs(L.seps[j][2]-y)); const d=nb.reduce((a,b)=>a+b,0)/nb.length; const w=RATIO*d; return {y,d,x1,X0:x1-w,w}; });
 }
@@ -145,9 +149,17 @@ async function analyze(file){
   let img=await loadImage(file);
   const hiBase=scaled(img,2400);
   if(img.close) img.close(); img=null;
-  let L=null, rot=0;
-  for(const r of [0,90,270,180]){ const hi=r?rotCanvas(hiBase,r):hiBase; const work=scaled(hi,WORK); const t=locate(work); if(t&&t.cv){ if(t.cv!==work) free(t.cv); t.cv=null; } free(work);
-    if(t&&!t.fail){ L=t; L.hi=hi; rot=r; break; } if(hi!==hiBase) free(hi); }
+  // 向きを探す：区切り線16本が見つかり、しかも上下が正しい向きを使う。
+  // 上下が逆さでも区切り線は見つかってしまうので、印刷された「着・発」の字が時刻欄の左側にあるかで確かめる
+  let L=null, rot=0, alt=null; const tried=new Set(), order=[0,90,270,180];
+  while(order.length){ const r=order.shift(); if(tried.has(r)) continue; tried.add(r);
+    const hi=r?rotCanvas(hiBase,r):hiBase; const work=scaled(hi,WORK); const t=locate(work); if(t&&t.cv){ if(t.cv!==work) free(t.cv); t.cv=null; } free(work);
+    if(t&&!t.fail){ t.up=upright(t);
+      if(t.up>0.05){ L=t; L.hi=hi; rot=r; break; }
+      if(!alt||t.up>alt.t.up){ if(alt&&alt.hi!==hiBase) free(alt.hi); alt={t,hi,r}; } else if(hi!==hiBase) free(hi);
+      order.unshift((r+180)%360); continue; }   // 逆さなら、次は180度回した向きを試す
+    if(hi!==hiBase) free(hi); }
+  if(!L&&alt){ L=alt.t; L.hi=alt.hi; rot=alt.r; } else if(alt&&alt.hi!==hiBase&&alt.hi!==L.hi) free(alt.hi);
   if(!L){ free(hiBase); return {ok:false}; }
   const hiR=Math.abs(L.ang)>0.05?rotCanvas(L.hi,-L.ang):L.hi; const k=hiR.width/L.w;
   if(L.hi!==hiBase) free(hiBase); if(hiR!==L.hi) free(L.hi); L.hi=null;
@@ -178,7 +190,7 @@ async function analyze(file){
   let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
-  return {ok:true,rows:out,header,head,debug:{rot,angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
+  return {ok:true,rows:out,header,head,debug:{rot,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();
