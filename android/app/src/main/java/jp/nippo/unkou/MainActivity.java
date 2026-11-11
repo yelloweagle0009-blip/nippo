@@ -3,6 +3,8 @@ package jp.nippo.unkou;
 // 運行日報 Android版
 // ・画面は GitHub Pages のアプリ（https://yelloweagle0009-blip.github.io/nippo/）をそのまま表示する（アプリの更新は自動で届く）
 // ・文字を読む部品（/nippo/m/ と /nippo/m-app/）はアプリの中（assets/m/）から出すので、ダウンロードしない
+//   後から部品が増えても、最初の1回だけダウンロードしてアプリの中に保存するので、アプリを入れ直す必要はない
+// ・このアプリ自体は「画面を表示する入れ物」なので、画面や読み取りの直しは入れ直さなくても自動で届く
 // ・入力した内容や覚えた場所はこのアプリの中に保存されるので、Chrome の閲覧履歴を消しても消えない
 // ・写真を撮る／選ぶ、読み取りの記録の書き出し（ダウンロードフォルダへ保存）に対応
 
@@ -29,7 +31,10 @@ import android.widget.Toast;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -109,15 +114,39 @@ public class MainActivity extends Activity {
                 : (name.endsWith(".js") || name.endsWith(".mjs")) ? "text/javascript"
                 : name.endsWith(".txt") ? "text/plain"
                 : "application/octet-stream";
-        try {
-            InputStream in = getAssets().open("m/" + name);
-            Map<String, String> h = new HashMap<>();
-            h.put("Access-Control-Allow-Origin", "*");
-            h.put("Cache-Control", "no-store");
-            return new WebResourceResponse(mime, mime.startsWith("text/") ? "utf-8" : null, 200, "OK", h, in);
-        } catch (Exception e) {
-            return null;
+        InputStream in = null;
+        // 1) アプリの中に入っている部品
+        try { in = getAssets().open("m/" + name); } catch (Exception e) { in = null; }
+        // 2) 後から増えた部品は、最初の1回だけダウンロードしてアプリの中（files/parts）に保存し、次からはそれを使う
+        //    （部品を新しくしてもアプリを入れ直さなくてよいように）
+        if (in == null) {
+            try {
+                File dir = new File(getFilesDir(), "parts");
+                dir.mkdirs();
+                File f = new File(dir, name);
+                if (!f.exists() || f.length() == 0) {
+                    File tmp = new File(dir, name + ".tmp");
+                    HttpURLConnection c = (HttpURLConnection) new URL("https://" + HOST + "/nippo/m/" + name).openConnection();
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(60000);
+                    if (c.getResponseCode() != 200) { c.disconnect(); return null; }
+                    try (InputStream src = c.getInputStream(); FileOutputStream o = new FileOutputStream(tmp)) {
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = src.read(buf)) > 0) o.write(buf, 0, n);
+                    }
+                    c.disconnect();
+                    if (!tmp.renameTo(f)) return null;
+                }
+                in = new FileInputStream(f);
+            } catch (Exception e) {
+                return null;
+            }
         }
+        Map<String, String> h = new HashMap<>();
+        h.put("Access-Control-Allow-Origin", "*");
+        h.put("Cache-Control", "no-store");
+        return new WebResourceResponse(mime, mime.startsWith("text/") ? "utf-8" : null, 200, "OK", h, in);
     }
 
     // 写真を撮る（カメラ）／保存した写真から選ぶ
