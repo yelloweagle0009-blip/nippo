@@ -1,0 +1,38 @@
+// 運行日報 Android版：GitHub Pages のアプリをそのまま表示し、文字を読む部品（/nippo/m/）はアプリの中に入れて持つ
+plugins { id 'com.android.application' }
+android {
+    namespace 'jp.nippo.unkou'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'jp.nippo.unkou'
+        minSdk 24
+        targetSdk 34
+        versionCode((System.getenv('NIPPO_VCODE') ?: '1') as int)
+        versionName(System.getenv('NIPPO_VNAME') ?: '1.0')
+    }
+    // 署名の鍵：アプリを更新するとき、前と同じ鍵でないと上書きで入れられない（入れ直すとデータが消える）。
+    // 鍵は GitHub の作業場所（キャッシュ）に1回だけ作って保管し、毎回同じものを使う（リポジトリには置かない）
+    signingConfigs {
+        release {
+            def ks = System.getenv('NIPPO_KS')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('NIPPO_KS_PASS')
+                keyAlias 'nippo'
+                keyPassword System.getenv('NIPPO_KS_PASS')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv('NIPPO_KS') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    androidResources { noCompress 'onnx', 'wasm' }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies { implementation 'androidx.core:core:1.13.1' }
