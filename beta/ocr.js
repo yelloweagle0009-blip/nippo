@@ -1,26 +1,31 @@
 // 運行日報：切り抜いた時刻欄・メーター欄の手書き数字を、スマホの中で読む。
 // 文字を読む部品：PaddleOCR の認識モデル（PP-OCRv6 small / PP-OCRv5 mobile / PP-OCRv6 tiny）。
-// 最初の1回だけモデル等をダウンロードし、スマホに保存する。写真は外へ送らない。
+// 部品（モデル・辞書・読み取りエンジン）はこのアプリと同じ場所（/nippo/m/）に置き、最初の1回だけダウンロードしてスマホに保存する。写真は外へ送らない。
 // 読み方：1つの欄を「3つのモデル × 6種類の切り抜き × 2通りの読み方」で読み、重み付きの多数決で決める。
 //   重みと「青（自信あり）」の基準は、2026-11-07 の日報3枚で決めた（1枚を外して残り2枚で決め、外した1枚で確かめる方法で、青の間違い0を確認）。
 (function(){
 'use strict';
-const ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
-const HF='https://huggingface.co/snowfluke/ppu-paddle-ocr-models/resolve/main/recognition/';
+// Android版のアプリ（NippoApp）では、部品はアプリの中に入っているので /nippo/m-app/ から読む（ダウンロードもスマホへの保存もしない）
+const IN_APP=/NippoApp\//.test(navigator.userAgent);
+const PARTS=new URL(window.NIPPO_PARTS||(IN_APP?'/nippo/m-app/':'/nippo/m/'),location.href).href;   // 部品の置き場所（onnxruntime-web 1.20.1 と PaddleOCR の認識モデル）
+const ORT=PARTS, HF=PARTS;
 const MODELS=[{k:'v6s',m:'PP-OCRv6_small_rec.onnx',d:'ppocrv6_dict.txt'},{k:'v5',m:'PP-OCRv5_mobile_rec_infer.onnx',d:'ppocrv5_dict.txt'},{k:'v6t',m:'PP-OCRv6_tiny_rec.onnx',d:'ppocrv6_tiny_dict.txt'}];
-const STORE='nippo-ocr-v1';
+const STORE='nippo-parts-v1', OLD_STORE='nippo-ocr-v1';   // 部品の保存先（アプリを更新しても消さない）
 // 読み方ごとの重み（T=時刻、M=メーター。モデル名＋切り抜きの種類＋d=数字だけで読む）
 const W={Tv5Ad:2.2,Mv6sAed:1.95,Tv5A:1.88,Tv6sAe:1.61,Mv6sAe:1.61,Mv6sC:1.47,Mv6sCd:1.47,Tv6sAed:1.44,Mv6tC:1.3,Mv6tCd:1.3,Mv6tCed:1.3,Tv6sCe:1.24,Tv6sCed:1.24,Tv6tAed:1.24,Tv5Apd:1.21,Tv6tAe:1.2,Tv5C:1.16,Tv5Ap:1.16,Tv5Ced:1.15,Tv5Cd:1.1,Tv5Ce:1.1,Mv6tCe:1.1,Tv6sC:1.05,Tv6sCd:1.05,Tv6sApd:0.99,Tv6sA:0.99,Tv6sAd:0.89,Mv6sA:0.85,Mv6sAd:0.85,Tv6sAp:0.72,Tv5Aed:0.67,Tv6tCe:0.66,Tv6tCed:0.61,Mv6sCe:0.59,Mv6sCed:0.59,Mv5C:0.59,Mv5Cd:0.59,Mv5Cp:0.51,Mv6tAe:0.51,Mv6tAed:0.51,Tv5Ae:0.44,Tv6tA:0.42,Tv6tAd:0.39,Tv6tCd:0.36,Tv6sCpd:0.34,Mv6sCp:0.34,Mv6sCpd:0.34,Tv6tC:0.07};
 const TH={t:{blue:15,gap:3,yel:1},m:{blue:6,gap:3,yel:0.8}};
 let ready=null;
 
 async function fetchKeep(url,onBytes){ // スマホに保存してあればそれを使い、無ければ取ってきて保存する
+  if(IN_APP){ const r=await fetch(url); if(!r.ok) throw new Error('app part '+r.status); return r; }
   let c=null; try{ c=await caches.open(STORE); const hit=await c.match(url); if(hit) return hit; }catch(e){}
   const res=await fetch(url); if(!res.ok) throw new Error('download '+res.status);
   let body;
   if(res.body&&onBytes){ const rd=res.body.getReader(), parts=[]; for(;;){ const {done,value}=await rd.read(); if(done) break; parts.push(value); onBytes(value.length); } body=new Blob(parts); }
   else body=await res.blob();
-  const keep=new Response(body); try{ if(c) await c.put(url,keep.clone()); }catch(e){}
+  // 種類（content-type）も一緒に保存する（読み取りエンジンの .mjs と .wasm は種類が無いと読み込めない）
+  const ty=res.headers.get('content-type')||(/\.m?js$/.test(url)?'text/javascript':/\.wasm$/.test(url)?'application/wasm':'application/octet-stream');
+  const keep=new Response(body,{headers:{'content-type':ty}}); try{ if(c) await c.put(url,keep.clone()); }catch(e){}
   return keep;
 }
 function addScript(src){ return new Promise((ok,ng)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ng(new Error('script '+src)); document.head.appendChild(s); }); }
@@ -32,6 +37,7 @@ async function ensureOrt(){
 }
 async function openModel(i,onProg){
   if(opened&&opened.i===i) return opened.E;
+  if(pre){ try{ await pre; }catch(e){} }   // 裏でダウンロード中なら、終わるのを待つ（同じものを2回取りに行かない）
   if(opened){ const o=opened; opened=null; try{ await o.E.sess.release(); }catch(e){} }
   await ensureOrt();
   const M=MODELS[i];
@@ -47,6 +53,24 @@ async function openModel(i,onProg){
 async function eachModel(onProg,fn){
   const order=MODELS.map((_,i)=>i); if(opened){ const c=opened.i; order.sort((a,b)=>(b===c)-(a===c)||a-b); }
   for(const i of order){ const E=await openModel(i,onProg); await fn(E,i); }
+}
+// 部品の一覧（名前・大きさ）。大きさは進み具合の表示に使う
+const FILES=[['ort.min.js',446284],['ort-wasm-simd-threaded.mjs',24618],['ort-wasm-simd-threaded.wasm',11246032],
+  ['ppocrv6_dict.txt',74948],['ppocrv5_dict.txt',74014],['ppocrv6_tiny_dict.txt',27157],
+  ['PP-OCRv6_tiny_rec.onnx',4462639],['PP-OCRv5_mobile_rec_infer.onnx',16559278],['PP-OCRv6_small_rec.onnx',21159378]];
+const TOTAL=FILES.reduce((a,f)=>a+f[1],0);
+async function partsReady(){ if(IN_APP) return {ready:true,have:TOTAL,total:TOTAL}; try{ const c=await caches.open(STORE); let have=0; for(const [n,sz] of FILES) if(await c.match(PARTS+n)) have+=sz; return {ready:have===TOTAL,have,total:TOTAL}; }catch(e){ return {ready:false,have:0,total:TOTAL}; } }
+// 全部の部品を先にダウンロードしてスマホに保存する（アプリを開いたときに裏で呼ぶ）。終わったら古い置き場所の分を消す
+let pre=null;
+function prefetch(onProg){
+  if(pre) return pre;
+  pre=(async()=>{ let done=0; const c=await caches.open(STORE);
+    for(const [n,sz] of FILES){ if(await c.match(PARTS+n)){ done+=sz; onProg&&onProg({done,total:TOTAL}); continue; }
+      await fetchKeep(PARTS+n,b=>{ done+=b; onProg&&onProg({done:Math.min(done,TOTAL),total:TOTAL}); }); }
+    try{ await caches.delete(OLD_STORE); }catch(e){}
+    return true; })();
+  pre.catch(()=>{ pre=null; });
+  return pre;
 }
 async function load(onProg){ await eachModel(onProg,async()=>{}); return MODELS.length; }
 async function closeModels(){ if(opened){ const o=opened; opened=null; try{ await o.E.sess.release(); }catch(e){} } }
@@ -208,5 +232,5 @@ function pickPlace(reads,known){
   const tier=(b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
 }
 async function readPlaces(rows,known,onProg){ const raw=await readPlaceRaw(rows,onProg); return raw.map(list=>pickPlace(list,known||[])); }
-window.NippoOCR={load,closeModels,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
+window.NippoOCR={load,closeModels,prefetch,partsReady,IN_APP,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
 })();

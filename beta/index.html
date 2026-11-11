@@ -113,7 +113,8 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
   </div>
   <h2>運行記録</h2>
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
-  <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。最初の1回だけ約45MBダウンロードします）</span></label>
+  <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
+  <p class="note" id="partsNote"></p>
   <p class="busy" id="busy"></p>
   <div id="photoTop"></div>
   <div class="head"><span>メーター（欄外）</span><span></span><span>上が着・下が発</span><span></span></div>
@@ -220,8 +221,10 @@ function learnFlush(){
 }
 function learnExport(){
   const L=learnLoad().concat(learnRows()); if(!L.length) return 0;
+  const name='nippo-yomitori-kiroku-'+new Date().toISOString().slice(0,10)+'.json';
+  if(window.NippoAndroid&&window.NippoAndroid.save){ window.NippoAndroid.save(name,JSON.stringify(L)); return L.length; }   // Android版のアプリでは「ダウンロード」フォルダに保存する
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(L)],{type:'application/json'}));
-  a.download='nippo-yomitori-kiroku-'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); a.remove(); return L.length;
+  a.download=name; document.body.appendChild(a); a.click(); a.remove(); return L.length;
 }
 const RKEY='unkou-routes-v1';
 // よく行く場所（名取さんから 2026-11-07 に聞いた一覧）。写真の店名はまずこの中から一番近いものを探す
@@ -403,15 +406,26 @@ async function readDigits(prow,head){
   finally{ try{ await window.NippoOCR.closeModels(); }catch(e){} }   // 読み終わったら文字を読む部品を閉じてメモリを返す
 }
 try{ $('ocrOn').checked=localStorage.getItem('unkou-ocr-on')!=='0'; }catch(e){ $('ocrOn').checked=true; }
-$('ocrOn').addEventListener('change',e=>{ try{ localStorage.setItem('unkou-ocr-on',e.target.checked?'1':'0'); }catch(err){} });
+$('ocrOn').addEventListener('change',e=>{ try{ localStorage.setItem('unkou-ocr-on',e.target.checked?'1':'0'); }catch(err){} if(e.target.checked) prepParts(); });
+// 文字を読む部品を、アプリを開いたときに裏でダウンロードしておく（写真を撮る前に準備が終わるように）
+async function prepParts(){
+  if(!$('ocrOn').checked||!window.NippoOCR||!window.NippoOCR.prefetch) return;
+  try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}   // スマホの空きが少なくても勝手に消されないように頼む
+  const st=await window.NippoOCR.partsReady(); if(st.ready) return;
+  const show=p=>{ $('partsNote').textContent=`文字を読む部品をダウンロード中… ${Math.round(p.done/p.total*100)}%（${(p.done/1048576).toFixed(0)}／${(p.total/1048576).toFixed(0)}MB・最初の1回だけ）`; };
+  show({done:st.have,total:st.total});
+  try{ await window.NippoOCR.prefetch(show); $('partsNote').textContent='文字を読む部品の準備ができました（スマホに保存したので、次からはダウンロードしません）'; setTimeout(()=>{ $('partsNote').textContent=''; },10000); }
+  catch(e){ $('partsNote').textContent='文字を読む部品をダウンロードできませんでした。電波の良い所でアプリを開き直してください。'; }
+}
+window.addEventListener('load',()=>{ setTimeout(prepParts,500); });
 $('photoIn').addEventListener('change',onPhoto);
 $('camIn').addEventListener('change',onPhoto);
 render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=15"></script>
-<script src="ocr.js?v=15"></script>
+<script src="photo.js?v=16"></script>
+<script src="ocr.js?v=16"></script>
 
 </body>
 </html>
