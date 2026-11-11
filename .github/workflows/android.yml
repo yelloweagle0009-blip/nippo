@@ -8,25 +8,46 @@ on:
     - cron: '17 3 * * 1'   # 毎週月曜：署名の鍵の保管が期限切れ（7日間使わないと消える）にならないように取り出すだけ
 permissions:
   contents: write
+concurrency:
+  group: android-${{ github.event_name }}
+  cancel-in-progress: true
 jobs:
   keep:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
         with: { path: ~/.nippo-key, key: nippo-signing-key-v1 }
       - run: ls -la ~/.nippo-key || echo "鍵が見つからない"
+      - name: 60日間なにも変更が無いと毎週の作業が止められるので、30日に1回だけ印を書き込む
+        run: |
+          last=$(git log -1 --format=%ct); now=$(date +%s)
+          if [ $(( (now - last) / 86400 )) -ge 30 ]; then
+            date -u +%Y-%m-%d > .keepalive
+            git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .keepalive && git commit -m "毎週の作業を止めないための印 [skip ci]" && git push
+          else echo "最近変更あり"; fi
   build:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    outputs:
+      fp: ${{ steps.key.outputs.fp }}
+      newmark: ${{ steps.key.outputs.newmark }}
     steps:
       - uses: actions/checkout@v4
       - name: 署名の鍵を取り出す
         uses: actions/cache@v4
         with: { path: ~/.nippo-key, key: nippo-signing-key-v1 }
       - name: 署名の鍵（最初の1回だけ作る。合言葉もその場で作って鍵と一緒に保管する）
+        id: key
         run: |
+          MARK=android/key-fingerprint.txt
           if [ ! -f ~/.nippo-key/nippo.jks ]; then
+            if [ -f "$MARK" ]; then
+              echo "::error::署名の鍵が見つからない。新しい鍵で作ると、スマホのアプリを入れ直さないと更新できなくなるので、ここで止める（公開済みのアプリはそのまま使える）"
+              exit 1
+            fi
             mkdir -p ~/.nippo-key
             head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' > ~/.nippo-key/p
             keytool -genkeypair -keystore ~/.nippo-key/nippo.jks -storetype PKCS12 -alias nippo -keyalg RSA -keysize 2048 -validity 36500 -storepass "$(cat ~/.nippo-key/p)" -keypass "$(cat ~/.nippo-key/p)" -dname "CN=Unkou Nippo App"
@@ -35,7 +56,11 @@ jobs:
           echo "::add-mask::$(cat ~/.nippo-key/p)"
           echo "NIPPO_KS=$HOME/.nippo-key/nippo.jks" >> "$GITHUB_ENV"
           echo "NIPPO_KS_PASS=$(cat ~/.nippo-key/p)" >> "$GITHUB_ENV"
-          keytool -list -v -keystore ~/.nippo-key/nippo.jks -storepass "$(cat ~/.nippo-key/p)" | grep -i "SHA256:"
+          FP=$(keytool -list -v -keystore ~/.nippo-key/nippo.jks -storepass "$(cat ~/.nippo-key/p)" | grep -i "SHA256:" | head -1 | sed 's/.*SHA256: *//')
+          echo "鍵の指紋（公開してよい情報）: $FP"
+          if [ -f "$MARK" ] && [ "$(cat $MARK)" != "$FP" ]; then echo "::error::鍵の指紋が前と違う。入れ直しが必要なアプリになるので止める"; exit 1; fi
+          echo "fp=$FP" >> "$GITHUB_OUTPUT"
+          if [ -f "$MARK" ]; then echo "newmark=0" >> "$GITHUB_OUTPUT"; else echo "newmark=1" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
@@ -43,7 +68,7 @@ jobs:
       - name: 部品とアイコンをアプリに入れる
         run: |
           mkdir -p android/app/src/main/assets/m android/app/src/main/res/mipmap-xxxhdpi
-          cp m/*.onnx m/*.txt m/*.js m/*.mjs m/*.wasm android/app/src/main/assets/m/
+          cp m/*.onnx m/ppocr*.txt m/*.js m/*.mjs m/*.wasm android/app/src/main/assets/m/
           cp icon-512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           ls -la android/app/src/main/assets/m
       - name: ビルド
@@ -82,9 +107,16 @@ jobs:
         if: always()
         with: { name: test-out, path: out }
   release:
-    needs: test
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: 鍵の指紋を記録する（次から別の鍵で作られるのを防ぐため。指紋は公開してよい情報）
+        if: needs.build.outputs.newmark == '1'
+        run: |
+          echo "${{ needs.build.outputs.fp }}" > android/key-fingerprint.txt
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/key-fingerprint.txt && git commit -m "Android版：鍵の指紋を記録 [skip ci]" && git push
       - uses: actions/download-artifact@v4
         with: { name: apk }
       - name: リリースに置く
@@ -92,4 +124,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete app --repo "${{ github.repository }}" --yes --cleanup-tag || true
-          gh release create app unkou-nippo.apk --repo "${{ github.repository }}" --title "運行日報 Android版 1.${{ github.run_number }}" --notes "スマホで開いて unkou-nippo.apk を押すと入れられます。文字を読む部品はアプリの中に入っているので、ダウンロードはありません。"
+          gh release create app unkou-nippo.apk --repo "${{ github.repository }}" --title "運行日報 Android版 1.${{ github.run_number }}" --notes "スマホで開いて unkou-nippo.apk を押すと入れられます。文字を読む部品はアプリの中に入っているので、ダウンロードはありません。前の版が入っているスマホは、そのまま上書きで入ります（データは消えません）。"
