@@ -12,10 +12,14 @@ cat out/test.txt
 if [ $RC -eq 0 ]; then
   # 電波を切って（機内モード）、もう一度開いて使えるか
   adb shell cmd connectivity airplane-mode enable
-  sleep 5
+  adb shell svc wifi disable
+  adb shell svc data disable
+  sleep 8
   node android/test.js offline > out/test-offline.txt 2>&1; RC=$?
   cat out/test-offline.txt
   adb shell cmd connectivity airplane-mode disable
+  adb shell svc wifi enable
+  adb shell svc data enable
 fi
 adb exec-out screencap -p > out/shot2.png
 adb logcat -d -t 400 > out/logcat.txt

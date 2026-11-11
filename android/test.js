@@ -16,8 +16,9 @@ const WebSocket = require('ws');
     await new Promise((ok, ng) => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method: 'Page.reload', params: { ignoreCache: false } })); });
     await new Promise(r => setTimeout(r, 8000));
     await p.waitForFunction(() => !!(window.NippoOCR && window.NippoPhoto && document.getElementById('rows')));
-    const off = await p.evaluate(async () => { const t = await (await fetch('/nippo/m-app/test-part.txt')).text(); const w = await fetch('/nippo/m-app/PP-OCRv5_mobile_rec_infer.onnx'); return { online: navigator.onLine, part: t.trim(), v5: (await w.arrayBuffer()).byteLength, title: document.title }; });
+    const off = await p.evaluate(async () => { let net = true; try { await fetch('https://www.google.com/generate_204?' + Date.now(), { mode: 'no-cors', cache: 'no-store' }); } catch (e) { net = false; } const t = await (await fetch('/nippo/m-app/test-part.txt')).text(); const w = await fetch('/nippo/m-app/PP-OCRv5_mobile_rec_infer.onnx'); return { net, online: navigator.onLine, part: t.trim(), v5: (await w.arrayBuffer()).byteLength, title: document.title }; });
     console.log('OFFLINE', JSON.stringify(off));
+    if (off.net) { console.log('FAIL: 電波を切れていない（試験が成り立たない）'); process.exit(7); }
     if (off.part !== 'nippo-ok' || off.v5 !== 16559278) { console.log('FAIL: 電波が無いと使えない'); process.exit(5); }
     console.log('PASS'); ws.close(); return;
   }
