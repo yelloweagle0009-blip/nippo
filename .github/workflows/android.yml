@@ -111,12 +111,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 鍵の指紋を記録する（次から別の鍵で作られるのを防ぐため。指紋は公開してよい情報）
-        if: needs.build.outputs.newmark == '1'
-        run: |
-          echo "${{ needs.build.outputs.fp }}" > android/key-fingerprint.txt
-          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add android/key-fingerprint.txt && git commit -m "Android版：鍵の指紋を記録 [skip ci]" && git push
       - uses: actions/download-artifact@v4
         with: { name: apk }
       - name: リリースに置く
@@ -125,3 +119,15 @@ jobs:
         run: |
           gh release delete app --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create app unkou-nippo.apk --repo "${{ github.repository }}" --title "運行日報 Android版 1.${{ github.run_number }}" --notes "スマホで開いて unkou-nippo.apk を押すと入れられます。文字を読む部品はアプリの中に入っているので、ダウンロードはありません。前の版が入っているスマホは、そのまま上書きで入ります（データは消えません）。"
+      - name: 鍵の指紋を記録する（次から別の鍵で作られるのを防ぐため。指紋は公開してよい情報）
+        if: needs.build.outputs.newmark == '1'
+        run: |
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main || true
+            echo "${{ needs.build.outputs.fp }}" > android/key-fingerprint.txt
+            git add android/key-fingerprint.txt
+            git diff --cached --quiet && break
+            git commit -m "Android版：鍵の指紋を記録 [skip ci]" && git push && break
+            sleep 5
+          done
