@@ -72,6 +72,8 @@ function rotCanvas(src,deg){ // 回転（時計回り、度）。外は白
   const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
   x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.translate(W/2,H/2); x.rotate(r); x.drawImage(src,-w/2,-h/2); return c;
 }
+// 使い終わった絵の場所をすぐ返す（スマホのメモリ不足を防ぐ）
+function free(c){ if(c&&c.getContext){ c.width=0; c.height=0; } }
 function scaled(src,long){ const k=Math.min(1,long/Math.max(src.width,src.height)); const c=document.createElement('canvas');
   c.width=Math.round(src.width*k); c.height=Math.round(src.height*k); c.getContext('2d').drawImage(src,0,0,c.width,c.height); return c; }
 
@@ -136,16 +138,19 @@ function rectCrop(src,k,x0,y0,x1,y1){ // 高解像度の回転済み写真から
 }
 async function loadImage(file){
   try{ return await createImageBitmap(file,{imageOrientation:'from-image'}); }
-  catch(e){ return await new Promise((ok,ng)=>{ const im=new Image(); im.onload=()=>ok(im); im.onerror=ng; im.src=URL.createObjectURL(file); }); }
+  catch(e){ return await new Promise((ok,ng)=>{ const u=URL.createObjectURL(file), im=new Image(); im.onload=()=>{ URL.revokeObjectURL(u); ok(im); }; im.onerror=e2=>{ URL.revokeObjectURL(u); ng(e2); }; im.src=u; }); }
 }
 async function analyze(file){
-  const img=await loadImage(file);
-  const base=document.createElement('canvas'); base.width=img.width; base.height=img.height; base.getContext('2d').drawImage(img,0,0);
-  const hiBase=scaled(base,2400);
+  // メモリを節約：カメラの写真（1200万画素なら約48MB）を元の大きさで持たず、長い辺2400に縮めた絵だけを作ってすぐ手放す
+  let img=await loadImage(file);
+  const hiBase=scaled(img,2400);
+  if(img.close) img.close(); img=null;
   let L=null, rot=0;
-  for(const r of [0,90,270,180]){ const hi=r?rotCanvas(hiBase,r):hiBase; const work=scaled(hi,WORK); const t=locate(work); if(t&&!t.fail){ L=t; L.hi=hi; rot=r; break; } }
-  if(!L) return {ok:false};
+  for(const r of [0,90,270,180]){ const hi=r?rotCanvas(hiBase,r):hiBase; const work=scaled(hi,WORK); const t=locate(work); if(t&&t.cv){ if(t.cv!==work) free(t.cv); t.cv=null; } free(work);
+    if(t&&!t.fail){ L=t; L.hi=hi; rot=r; break; } if(hi!==hiBase) free(hi); }
+  if(!L){ free(hiBase); return {ok:false}; }
   const hiR=Math.abs(L.ang)>0.05?rotCanvas(L.hi,-L.ang):L.hi; const k=hiR.width/L.w;
+  if(L.hi!==hiBase) free(hiBase); if(hiR!==L.hi) free(L.hi); L.hi=null;
   const rows=rowsOf(L);
   const times=[], tsumi=[];
   rows.forEach(r=>{ const hb=r.d/2;
@@ -172,6 +177,7 @@ async function analyze(file){
   // 始業・終業メーターと走行粁の数字の部分（数字の読み取り用）。写っていなければ出さない
   let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
+  free(hiR);
   return {ok:true,rows:out,header,head,debug:{rot,angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};

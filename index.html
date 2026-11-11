@@ -400,6 +400,7 @@ async function readDigits(prow,head){
     if(pn+pm) hn=(hn?hn+' ':'')+`店名：青 ${pn}か所・黄 ${pm}か所。`;
     $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
   }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。'; }
+  finally{ try{ await window.NippoOCR.closeModels(); }catch(e){} }   // 読み終わったら文字を読む部品を閉じてメモリを返す
 }
 try{ $('ocrOn').checked=localStorage.getItem('unkou-ocr-on')!=='0'; }catch(e){ $('ocrOn').checked=true; }
 $('ocrOn').addEventListener('change',e=>{ try{ localStorage.setItem('unkou-ocr-on',e.target.checked?'1':'0'); }catch(err){} });
@@ -409,8 +410,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=14"></script>
-<script src="ocr.js?v=14"></script>
+<script src="photo.js?v=15"></script>
+<script src="ocr.js?v=15"></script>
 
 </body>
 </html>
