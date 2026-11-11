@@ -24,24 +24,32 @@ async function fetchKeep(url,onBytes){ // スマホに保存してあればそ�
   return keep;
 }
 function addScript(src){ return new Promise((ok,ng)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ng(new Error('script '+src)); document.head.appendChild(s); }); }
-async function load(onProg){
-  if(ready) return ready;
-  ready=(async()=>{
-    let got=0; const tick=n=>{ got+=n; onProg&&onProg(got); };
-    if(!window.ort) await addScript(ORT+'ort.min.js');
-    ort.env.wasm.wasmPaths=ORT; ort.env.wasm.numThreads=1;
-    const eng=[];
-    for(const M of MODELS){
-      const dic=(await (await fetchKeep(HF+M.d)).text()).split(/\r\n|\r|\n/);
-      const buf=await (await fetchKeep(HF+M.m,tick)).arrayBuffer();
-      const sess=await ort.InferenceSession.create(buf,{executionProviders:['wasm']});
-      const allow=[0]; dic.forEach((ch,i)=>{ if(/^[0-9０-９:：]$/.test(ch)) allow.push(i); });
-      eng.push({k:M.k,sess,dic,allow});
-    }
-    return eng;
-  })();
-  try{ return await ready; }catch(e){ ready=null; throw e; }
+// メモリを節約：3つのモデルを同時に開かず、1つずつ開いて使い、次を開く前に閉じる
+let opened=null, dics={}, got=0;
+async function ensureOrt(){
+  if(!ready) ready=(async()=>{ if(!window.ort) await addScript(ORT+'ort.min.js'); ort.env.wasm.wasmPaths=ORT; ort.env.wasm.numThreads=1; })();
+  try{ await ready; }catch(e){ ready=null; throw e; }
 }
+async function openModel(i,onProg){
+  if(opened&&opened.i===i) return opened.E;
+  if(opened){ const o=opened; opened=null; try{ await o.E.sess.release(); }catch(e){} }
+  await ensureOrt();
+  const M=MODELS[i];
+  if(!dics[M.k]) dics[M.k]=(await (await fetchKeep(HF+M.d)).text()).split(/\r\n|\r|\n/);
+  const dic=dics[M.k];
+  let buf=await (await fetchKeep(HF+M.m,n=>{ got+=n; onProg&&onProg({phase:'download',bytes:got}); })).arrayBuffer();
+  const sess=await ort.InferenceSession.create(buf,{executionProviders:['wasm']}); buf=null;
+  const allow=[0]; dic.forEach((ch,j)=>{ if(/^[0-9０-９:：]$/.test(ch)) allow.push(j); });
+  const E={k:M.k,sess,dic,allow}; opened={i,E}; return E;
+}
+// 3つのモデルで順に fn(E, モデルの番号) を呼ぶ。いま開いているモデルから始めて開き直しを減らす。
+// 結果はモデルの番号の順（v6s→v5→v6t）に並べ直して使うので、どの順で読んでも答えは同じ
+async function eachModel(onProg,fn){
+  const order=MODELS.map((_,i)=>i); if(opened){ const c=opened.i; order.sort((a,b)=>(b===c)-(a===c)||a-b); }
+  for(const i of order){ const E=await openModel(i,onProg); await fn(E,i); }
+}
+async function load(onProg){ await eachModel(onProg,async()=>{}); return MODELS.length; }
+async function closeModels(){ if(opened){ const o=opened; opened=null; try{ await o.E.sess.release(); }catch(e){} } }
 // 高さ48にそろえ、青・緑・赤の順で −1〜1 にして読む。全文字で読んだ結果と、数字とコロンだけで読んだ結果の2つを返す
 async function recBoth(E,cv){
   if(!cv) return null;
@@ -74,19 +82,17 @@ const mins=v=>+v.slice(0,-2)*60+ +v.slice(-2);
 // rows: NippoPhoto.analyze の rows。opt={start,end}（始業・終業メーターの数字。無ければ空）
 async function readRows(rows,opt,onProg){
   opt=opt||{};
-  const eng=await load(b=>onProg&&onProg({phase:'download',bytes:b}));
   const jobs=[]; rows.forEach((r,i)=>{ if(r.hasArr) jobs.push([i,'arr']); if(r.hasDep) jobs.push([i,'dep']); jobs.push([i,'meter']); });
-  const total=jobs.length*eng.length*6; let done=0;
-  const reads={};
-  for(const [i,f] of jobs){
-    const cr=f==='meter'?rows[i].ocr.meter:rows[i].ocr[f];
-    const V={A:cr.A,C:cr.C,Ae:enh(cr.A),Ce:enh(cr.C),Ap:pad(cr.A,0.3),Cp:pad(cr.C,0.4)};
-    const list=[];
-    for(const E of eng) for(const [vn,cv] of Object.entries(V)){
+  const total=jobs.length*MODELS.length*6; let done=0;
+  const Vs=jobs.map(([i,f])=>{ const cr=f==='meter'?rows[i].ocr.meter:rows[i].ocr[f];
+    return {A:cr.A,C:cr.C,Ae:enh(cr.A),Ce:enh(cr.C),Ap:pad(cr.A,0.3),Cp:pad(cr.C,0.4)}; });
+  const slot=jobs.map(()=>MODELS.map(()=>[]));   // slot[欄][モデル] = 読んだ結果
+  await eachModel(onProg,async(E,m)=>{
+    for(let j=0;j<jobs.length;j++) for(const [vn,cv] of Object.entries(Vs[j])){
       let r=null; try{ r=await recBoth(E,cv); }catch(e){}
-      if(r){ list.push({s:E.k+vn,t:r.free.t,m:r.free.m}); list.push({s:E.k+vn+'d',t:r.digit.t,m:r.digit.m}); }
-      done++; onProg&&onProg({phase:'read',done,total}); }
-    reads[i+'_'+f]=list; }
+      if(r){ slot[j][m].push({s:E.k+vn,t:r.free.t,m:r.free.m}); slot[j][m].push({s:E.k+vn+'d',t:r.digit.t,m:r.digit.m}); }
+      done++; onProg&&onProg({phase:'read',done,total}); } });
+  const reads={}; jobs.forEach(([i,f],j)=>{ reads[i+'_'+f]=[].concat(...slot[j]); });
   return {res:decide(rows.length,reads,opt,W,TH),reads};
 }
 const lower3=v=>{ const d=String(v||'').replace(/\D/g,''); return d?Number(d.slice(-3)):null; };
@@ -159,12 +165,12 @@ function decideOld(n,reads,opt,Wt,T){
 // 見つからなくても終業＞始業で差が1000km未満なら黄、それ以外は入れない
 async function readHead(head,onProg){
   if(!head) return null;
-  const eng=await load(b=>onProg&&onProg({phase:'download',bytes:b}));
-  const vote=async(cv,lens)=>{ if(!cv) return []; const V={A:cv,Ae:enh(cv),Ap:pad(cv,0.3)}; const sc={};
-    for(const E of eng) for(const v of Object.values(V)){ let r=null; try{ r=await recBoth(E,v); }catch(e){}
-      if(!r) continue; for(const x of [r.free,r.digit]){ if(x.m<0.5) continue; const d=half(x.t).replace(/\D/g,''); if(lens.includes(d.length)) sc[d]=(sc[d]||0)+1; } }
-    return Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,4); };
-  const S=await vote(head.start,[6,7]), En=await vote(head.end,[6,7]), T=await vote(head.total,[1,2,3,4]);
+  const cells=[[head.start,[6,7]],[head.end,[6,7]],[head.total,[1,2,3,4]]].map(([cv,lens])=>({lens,V:cv?[cv,enh(cv),pad(cv,0.3)]:[],got:MODELS.map(()=>[])}));
+  await eachModel(onProg,async(E,m)=>{
+    for(const c of cells) for(const v of c.V){ let r=null; try{ r=await recBoth(E,v); }catch(e){}
+      if(!r) continue; for(const x of [r.free,r.digit]){ if(x.m<0.5) continue; const d=half(x.t).replace(/\D/g,''); if(c.lens.includes(d.length)) c.got[m].push(d); } } });
+  const vote=c=>{ const sc={}; for(const d of [].concat(...c.got)) sc[d]=(sc[d]||0)+1; return Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,4); };
+  const S=vote(cells[0]), En=vote(cells[1]), T=vote(cells[2]);
   let best=null;
   for(const [sv,ss] of S) for(const [ev,es] of En){ const diff=+ev-+sv; if(!(diff>0&&diff<1000)) continue;
     const tm=T.find(([tv])=>+tv===diff); const sc=ss+es+(tm?tm[1]+20:0);
@@ -175,12 +181,12 @@ async function readHead(head,onProg){
 }
 // 店名を読む：3つのモデル × 2種類の切り抜きで、全文字のまま読んだ結果を集める
 async function readPlaceRaw(rows,onProg){
-  const eng=await load(b=>onProg&&onProg({phase:'download',bytes:b}));
-  const out=[]; let done=0; const total=rows.length*eng.length*2;
-  for(const r of rows){ const cv=r.ocr.place&&r.ocr.place.A; const list=[];
-    for(const E of eng) for(const [vn,v] of [['A',cv],['Ae',enh(cv)]]){ let x=null; try{ x=await recBoth(E,v); }catch(e){} if(x) list.push({s:E.k+vn,t:x.free.t,m:x.free.m}); done++; onProg&&onProg({phase:'place',done,total}); }
-    out.push(list); }
-  return out;
+  let done=0; const total=rows.length*MODELS.length*2;
+  const Vs=rows.map(r=>{ const cv=r.ocr.place&&r.ocr.place.A; return [['A',cv],['Ae',enh(cv)]]; });
+  const slot=rows.map(()=>MODELS.map(()=>[]));
+  await eachModel(onProg,async(E,m)=>{
+    for(let j=0;j<rows.length;j++) for(const [vn,v] of Vs[j]){ let x=null; try{ x=await recBoth(E,v); }catch(e){} if(x) slot[j][m].push({s:E.k+vn,t:x.free.t,m:x.free.m}); done++; onProg&&onProg({phase:'place',done,total}); } });
+  return slot.map(l=>[].concat(...l));
 }
 // 店名を決める：前に入れた場所の中から、読んだ文字に一番似ているものを選ぶ（似ている度合い＝共通する文字の並びの長さ）。
 // 2つ以上の読みが同じで、前の場所より長い（例：「KFK甲府南」に対して「KFK甲府南工場」）ときは、読んだ文字をそのまま黄色で出す。
@@ -202,5 +208,5 @@ function pickPlace(reads,known){
   const tier=(b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
 }
 async function readPlaces(rows,known,onProg){ const raw=await readPlaceRaw(rows,onProg); return raw.map(list=>pickPlace(list,known||[])); }
-window.NippoOCR={load,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
+window.NippoOCR={load,closeModels,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
 })();
