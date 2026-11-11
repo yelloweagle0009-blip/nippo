@@ -69,7 +69,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - run: npm i --no-save playwright-core@1.47.2 && mkdir -p out
+      - run: npm i --no-save ws@8.18.0 && mkdir -p out
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
