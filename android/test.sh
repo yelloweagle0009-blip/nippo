@@ -9,6 +9,7 @@ PID=$(adb shell pidof jp.nippo.unkou | tr -d '\r')
 adb forward tcp:9222 localabstract:webview_devtools_remote_$PID
 node android/test.js > out/test.txt 2>&1; RC=$?
 cat out/test.txt
+grep -q '^PASS' out/test.txt || RC=9
 if [ $RC -eq 0 ]; then
   # 電波を切って（機内モード）、もう一度開いて使えるか
   adb shell cmd connectivity airplane-mode enable
@@ -17,6 +18,7 @@ if [ $RC -eq 0 ]; then
   sleep 8
   node android/test.js offline > out/test-offline.txt 2>&1; RC=$?
   cat out/test-offline.txt
+  grep -q '^PASS' out/test-offline.txt || RC=9
   adb shell cmd connectivity airplane-mode disable
   adb shell svc wifi enable
   adb shell svc data enable

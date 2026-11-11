@@ -1,10 +1,19 @@
 // アプリの中の画面につないで（Chrome の開発用のつなぎ方：CDP）、本物の部品で読み、結果を書き出す
 const WebSocket = require('ws');
+// 途中で黙って終わっても「合格」にならないようにする（PASS を書いたときだけ合格）
+let passed = false; process.exitCode = 1;
+const keep = setInterval(() => {}, 1000);
+setTimeout(() => { console.log('FAIL: 時間切れ（15分）'); process.exit(8); }, 15 * 60 * 1000).unref();
+process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった'); });
+const step = m => console.log('STEP', m);
 (async () => {
+  step('つなぐ先を探す');
   const list = await (await fetch('http://127.0.0.1:9222/json')).json();
   const pg = list.find(x => x.type === 'page' && x.url.includes('/nippo/')) || list.find(x => x.type === 'page');
   if (!pg) { console.log('FAIL: 画面が見つからない', JSON.stringify(list)); process.exit(4); }
+  step('画面 ' + pg.url);
   const ws = new WebSocket(pg.webSocketDebuggerUrl); await new Promise((ok, ng) => { ws.on('open', ok); ws.on('error', ng); });
+  step('つないだ');
   let id = 0; const wait = {};
   ws.on('message', m => { const d = JSON.parse(m); if (d.id && wait[d.id]) { wait[d.id](d); delete wait[d.id]; } });
   const ev = (fn, arg) => new Promise((ok, ng) => { const i = ++id; wait[i] = d => { if (d.error) return ng(new Error(JSON.stringify(d.error))); const r = d.result; if (r.exceptionDetails) return ng(new Error(JSON.stringify(r.exceptionDetails).slice(0, 800))); ok(r.result.value); };
@@ -28,7 +37,7 @@ const WebSocket = require('ws');
     console.log('OFFLINE', JSON.stringify(off));
     if (off.net) { console.log('FAIL: 電波を切れていない（試験が成り立たない）'); process.exit(7); }
     if (off.part !== 'nippo-ok' || off.v5 !== 16559278) { console.log('FAIL: 電波が無いと使えない'); process.exit(5); }
-    console.log('PASS'); ws.close(); return;
+    console.log('PASS'); passed = true; process.exitCode = 0; clearInterval(keep); ws.close(); return;
   }
   await p.waitForFunction(() => !!(window.NippoOCR && window.NippoPhoto));
   const info = await p.evaluate(async () => {
@@ -59,6 +68,6 @@ const WebSocket = require('ws');
   const g = (i, f) => res.res[i] && res.res[i][f] && res.res[i][f].v;
   const ok = g(0, 'dep') === '6:05' && g(1, 'arr') === '8:40' && g(1, 'dep') === '9:00' && g(1, 'meter') === '753' && g(2, 'arr') === '17:30' && res.places.join(',') === '車庫,KFKマシンセンター,車庫';
   if (!ok) { console.log('FAIL: 読んだ値が違う'); process.exit(3); }
-  console.log('PASS');
+  console.log('PASS'); passed = true; process.exitCode = 0; clearInterval(keep);
   ws.close();
-})().catch(e => { console.log('FAIL', e && e.stack || e); process.exit(1); });
+})().catch(e => { console.log('FAIL', e && e.stack || e); clearInterval(keep); process.exit(1); });
