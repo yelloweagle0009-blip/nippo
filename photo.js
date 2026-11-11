@@ -85,10 +85,15 @@ function locate(work){
   let cv=work;
   if(Math.abs(ang)>0.05){ cv=rotCanvas(work,-ang); g=grayOf(cv); b=adaptiveInv(g,w,h,31,15); hl=openH(b,w,h,k); }
   const S=segments(hl,w,h), p=pickSeps(S,w,h); if(!p) return null;
-  const grp=p.grp.slice().sort((a,b)=>a[2]-b[2]), d=p.d;
+  let grp=p.grp.slice().sort((a,b)=>a[2]-b[2]); const d=p.d;
+  // 右端がほかの線と一直線に並ばない線（表の上の枠など、たまたま長さが似た線）を外す
+  if(grp.length>=6){ const sl=[]; for(let i=0;i<grp.length;i++) for(let j=i+1;j<grp.length;j++) sl.push((grp[j][1]-grp[i][1])/(grp[j][2]-grp[i][2]||1));
+    const m=median(sl), c=median(grp.map(s=>s[1]-m*s[2])), L0=median(grp.map(s=>s[1]-s[0]));
+    const keep=grp.filter(s=>Math.abs(s[1]-(m*s[2]+c))<=Math.max(6,L0*0.08)); if(keep.length>=6) grp=keep; }
   const seps=[grp[0]];
   for(const s of grp.slice(1)){ const q0=seps[seps.length-1], gap=s[2]-q0[2], kk=Math.max(1,Math.round(gap/d));
-    for(let t=1;t<kk;t++){ const q=seps[seps.length-1]; seps.push([q[0]+(s[0]-q[0])*t/kk,q[1]+(s[1]-q[1])*t/kk,q[2]+gap*t/kk]); }
+    // 見つからなかった行の線は、前後の見つかった線の間を等分して補う（前に補った線からではなく、見つかった線 q0 から数える）
+    for(let t=1;t<kk;t++) seps.push([q0[0]+(s[0]-q0[0])*t/kk,q0[1]+(s[1]-q0[1])*t/kk,q0[2]+gap*t/kk]);
     seps.push(s); }
   const isSep=(y,x0,x1)=>{ const ww=x1-x0, yi=Math.round(y); if(yi<4||yi>=h-4) return false;
     const colAny=(xa,xb)=>{ xa=Math.max(0,Math.floor(xa)); xb=Math.min(w,Math.floor(xb)); if(xb<=xa) return 0; let n=0; for(let x=xa;x<xb;x++){ for(let yy=yi-4;yy<=yi+4;yy++) if(hl[yy*w+x]){ n++; break; } } return n/(xb-xa); };
@@ -99,6 +104,8 @@ function locate(work){
     const q=[2*l0[0]-l1[0],2*l0[1]-l1[1],l0[2]+(l0[2]-l1[2])], p2=[2*f0[0]-f1[0],2*f0[1]-f1[1],f0[2]-(f1[2]-f0[2])];
     if(isSep(q[2],q[0],q[1])) seps.push(q); else if(isSep(p2[2],p2[0],p2[1])) seps.unshift(p2); else break; }
   if(seps.length!==16) return {fail:true,found:seps.length};
+  // 16本が上から順に、ほぼ同じ間隔で並んでいるか確かめる（崩れていたら、この向きでは見つからなかったことにする）
+  for(let i=1;i<16;i++){ const g=seps[i][2]-seps[i-1][2]; if(!(g>d*0.6&&g<d*1.5)) return {fail:true,found:16,bad:'spacing'}; }
   const vl=openV(b,w,h,Math.max(15,Math.floor(h/40)));
   const lines=dilateV(dilateH(Uint8Array.from(hl,(v,i)=>v|vl[i]),w,h,3),w,h,3);
   return {cv,g,b,hl,lines,seps,d,ang,w,h};
@@ -107,6 +114,9 @@ function locate(work){
 function upright(L){ const rows=rowsOf(L); let a=0,b=0,n=0;
   rows.forEach(r=>{ const hb=r.d/2; [[r.y-hb,r.y],[r.y,r.y+hb]].forEach(([y0,y1])=>{ a+=frac(L,X(r,128),X(r,144),y0+hb*0.15,y1-hb*0.15); b+=frac(L,X(r,211),X(r,227),y0+hb*0.15,y1-hb*0.15); n++; }); });
   return n?(a-b)/n:0; }
+// 見つけた線の位置を、写真を180度回したときの位置に直す（逆さの向きでしか線が見つからなかったとき用）
+function flipL(L){ const {w,h}=L, rv=a=>{ const o=new a.constructor(a.length); for(let i=0,n=a.length;i<n;i++) o[n-1-i]=a[i]; return o; };
+  return {cv:null,g:rv(L.g),b:rv(L.b),hl:rv(L.hl),lines:rv(L.lines),seps:L.seps.map(([x0,x1,y])=>[w-1-x1,w-1-x0,h-1-y]).reverse(),d:L.d,ang:L.ang,w,h}; }
 function rowsOf(L){
   return L.seps.map(([x0,x1,y],i)=>{ const nb=[i-1,i+1].filter(j=>j>=0&&j<16).map(j=>Math.abs(L.seps[j][2]-y)); const d=nb.reduce((a,b)=>a+b,0)/nb.length; const w=RATIO*d; return {y,d,x1,X0:x1-w,w}; });
 }
@@ -144,7 +154,8 @@ async function loadImage(file){
   try{ return await createImageBitmap(file,{imageOrientation:'from-image'}); }
   catch(e){ return await new Promise((ok,ng)=>{ const u=URL.createObjectURL(file), im=new Image(); im.onload=()=>{ URL.revokeObjectURL(u); ok(im); }; im.onerror=e2=>{ URL.revokeObjectURL(u); ng(e2); }; im.src=u; }); }
 }
-async function analyze(file){
+async function analyze(file,opt){
+  opt=opt||{};
   // メモリを節約：カメラの写真（1200万画素なら約48MB）を元の大きさで持たず、長い辺2400に縮めた絵だけを作ってすぐ手放す
   let img=await loadImage(file);
   const hiBase=scaled(img,2400);
@@ -154,13 +165,19 @@ async function analyze(file){
   let L=null, rot=0, alt=null; const tried=new Set(), order=[0,90,270,180];
   while(order.length){ const r=order.shift(); if(tried.has(r)) continue; tried.add(r);
     const hi=r?rotCanvas(hiBase,r):hiBase; const work=scaled(hi,WORK); const t=locate(work); if(t&&t.cv){ if(t.cv!==work) free(t.cv); t.cv=null; } free(work);
+    if(t&&!t.fail&&opt.failUpright&&upright(t)>0.05){ if(hi!==hiBase) free(hi); continue; }   // 試験用：正しい向きで線が見つからない写真のまね
     if(t&&!t.fail){ t.up=upright(t);
       if(t.up>0.05){ L=t; L.hi=hi; rot=r; break; }
       if(!alt||t.up>alt.t.up){ if(alt&&alt.hi!==hiBase) free(alt.hi); alt={t,hi,r}; } else if(hi!==hiBase) free(hi);
       order.unshift((r+180)%360); continue; }   // 逆さなら、次は180度回した向きを試す
     if(hi!==hiBase) free(hi); }
-  if(!L&&alt){ L=alt.t; L.hi=alt.hi; rot=alt.r; } else if(alt&&alt.hi!==hiBase&&alt.hi!==L.hi) free(alt.hi);
+  if(!L&&alt){
+    if(alt.t.up<-0.05){ // 逆さの向きでしか線が見つからなかった：見つけた線ごと180度回して、正しい向きで使う
+      L=flipL(alt.t); L.hi=rotCanvas(alt.hi,180); if(alt.hi!==hiBase) free(alt.hi); rot=(alt.r+180)%360; L.up=upright(L); L.flipped=true;
+    } else { L=alt.t; L.hi=alt.hi; rot=alt.r; }
+  } else if(alt&&alt.hi!==hiBase&&alt.hi!==L.hi) free(alt.hi);
   if(!L){ free(hiBase); return {ok:false}; }
+  if(L.up<-0.05){ free(L.hi); if(L.hi!==hiBase) free(hiBase); return {ok:false,upside:true}; }   // それでも逆さなら、逆さの行は作らない
   const hiR=Math.abs(L.ang)>0.05?rotCanvas(L.hi,-L.ang):L.hi; const k=hiR.width/L.w;
   if(L.hi!==hiBase) free(hiBase); if(hiR!==L.hi) free(L.hi); L.hi=null;
   const rows=rowsOf(L);
@@ -169,7 +186,7 @@ async function analyze(file){
     [[r.y-hb,r.y],[r.y,r.y+hb]].forEach(([a,b])=>times.push(frac(L,X(r,152),X(r,226),a+hb*0.14,b-hb*0.14)));
     tsumi.push(frac(L,X(r,482),X(r,536),r.y-hb*0.9,r.y+hb*0.9)); });
   const written=[]; times.forEach((v,j)=>{ if(v>0.06) written.push(j); });
-  if(!written.length) return {ok:false,empty:true};
+  if(!written.length){ free(hiR); return {ok:false,empty:true}; }
   const lastRow=Math.floor(written[written.length-1]/2)+1;
   const out=[];
   for(let pr=2;pr<=Math.max(2,lastRow);pr++){
@@ -190,7 +207,7 @@ async function analyze(file){
   let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
-  return {ok:true,rows:out,header,head,debug:{rot,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
+  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();
