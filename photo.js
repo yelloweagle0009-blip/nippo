@@ -117,6 +117,17 @@ function upright(L){ const rows=rowsOf(L); let a=0,b=0,n=0;
 // 見つけた線の位置を、写真を180度回したときの位置に直す（逆さの向きでしか線が見つからなかったとき用）
 function flipL(L){ const {w,h}=L, rv=a=>{ const o=new a.constructor(a.length); for(let i=0,n=a.length;i<n;i++) o[n-1-i]=a[i]; return o; };
   return {cv:null,g:rv(L.g),b:rv(L.b),hl:rv(L.hl),lines:rv(L.lines),seps:L.seps.map(([x0,x1,y])=>[w-1-x1,w-1-x0,h-1-y]).reverse(),d:L.d,ang:L.ang,w,h}; }
+// 行の位置合わせを確かめる：着・発の区切り線は店名の欄まで続かない（店名の欄は着・発をまたぐ1つの枠）。
+// 一番上（または一番下）の線が店名の欄まで続いていたら、それは表の枠線なので、1行ずらして直す
+function contRight(L,i){ const r=rowsOf(L)[i], y=Math.round(r.y), {w,h,hl}=L; let n=0,t=0;
+  for(let ref=262;ref<=398;ref+=2){ const x=Math.round(X(r,ref)); if(x<0||x>=w){ continue; } t++; for(let yy=Math.max(0,y-3);yy<=Math.min(h-1,y+3);yy++) if(hl[yy*w+x]){ n++; break; } }
+  return t?n/t:0; }
+function fixWindow(L){ let moved=0;
+  for(let k=0;k<3;k++){ const d=L.seps[15][2]-L.seps[14][2], d0=L.seps[1][2]-L.seps[0][2];
+    if(contRight(L,0)>0.6&&contRight(L,15)<0.6){ const q=L.seps[15], p=L.seps[14]; L.seps=L.seps.slice(1).concat([[2*q[0]-p[0],2*q[1]-p[1],q[2]+d]]); moved++; continue; }
+    if(contRight(L,15)>0.6&&contRight(L,0)<0.6){ const q=L.seps[0], p=L.seps[1]; L.seps=[[2*q[0]-p[0],2*q[1]-p[1],q[2]-d0]].concat(L.seps.slice(0,15)); moved--; continue; }
+    break; }
+  return moved; }
 function rowsOf(L){
   return L.seps.map(([x0,x1,y],i)=>{ const nb=[i-1,i+1].filter(j=>j>=0&&j<16).map(j=>Math.abs(L.seps[j][2]-y)); const d=nb.reduce((a,b)=>a+b,0)/nb.length; const w=RATIO*d; return {y,d,x1,X0:x1-w,w}; });
 }
@@ -178,13 +189,15 @@ async function analyze(file,opt){
   } else if(alt&&alt.hi!==hiBase&&alt.hi!==L.hi) free(alt.hi);
   if(!L){ free(hiBase); return {ok:false}; }
   if(L.up<-0.05){ free(L.hi); if(L.hi!==hiBase) free(hiBase); return {ok:false,upside:true}; }   // それでも逆さなら、逆さの行は作らない
+  L.shift=fixWindow(L);
   const hiR=Math.abs(L.ang)>0.05?rotCanvas(L.hi,-L.ang):L.hi; const k=hiR.width/L.w;
   if(L.hi!==hiBase) free(hiBase); if(hiR!==L.hi) free(L.hi); L.hi=null;
   const rows=rowsOf(L);
-  const times=[], tsumi=[];
+  const times=[], tsumi=[], oroshi=[];
   rows.forEach(r=>{ const hb=r.d/2;
     [[r.y-hb,r.y],[r.y,r.y+hb]].forEach(([a,b])=>times.push(frac(L,X(r,152),X(r,226),a+hb*0.14,b-hb*0.14)));
-    tsumi.push(frac(L,X(r,482),X(r,536),r.y-hb*0.9,r.y+hb*0.9)); });
+    tsumi.push(frac(L,X(r,482),X(r,536),r.y-hb*0.9,r.y+hb*0.9));
+    oroshi.push(frac(L,X(r,424),X(r,480),r.y-hb*0.9,r.y+hb*0.9)); });   // 卸荷個数の欄
   const written=[]; times.forEach((v,j)=>{ if(v>0.06) written.push(j); });
   if(!written.length){ free(hiR); return {ok:false,empty:true}; }
   const lastRow=Math.floor(written[written.length-1]/2)+1;
@@ -196,7 +209,9 @@ async function analyze(file,opt){
     const meterA=rectCrop(hiR,k,X(r,-60),r.y-r.d*0.75,X(r,72),r.y+r.d*0.75);
     const placeA=rectCrop(hiR,k,X(r,236),r.y-r.d*0.55,X(r,404),r.y+r.d*0.55);  // 店名欄（行の着・発をまたいで書かれる）
     const meterC=tightCrop(L,X(r,-60),X(r,62),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
-    out.push({paperRow:pr, loaded:tsumi[pr-1]>0.035, hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
+    // 実車：この行で積んだ、または次の行で降ろす（荷を載せたまま途中の店に寄った区間も実車になる）
+    const ld=tsumi[pr-1]>0.035, nextUn=(oroshi[pr]||0)>0.05;
+    out.push({paperRow:pr, loaded:ld||nextUn, cargoIn:ld, cargoOut:oroshi[pr-1]>0.05, hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
       img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
@@ -207,7 +222,7 @@ async function analyze(file,opt){
   let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
-  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
+  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();
