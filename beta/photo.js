@@ -134,13 +134,33 @@ function rowsOf(L){
 const X=(r,ref)=>r.X0+(ref-125)/105*r.w;
 function frac(L,x0,x1,y0,y1){ const {w,h,b,lines}=L; x0=Math.max(0,Math.floor(x0)); x1=Math.min(w,Math.floor(x1)); y0=Math.max(0,Math.floor(y0)); y1=Math.min(h,Math.floor(y1));
   if(x1<=x0||y1<=y0) return -1; let n=0; for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++) if(b[y*w+x]&&!lines[y*w+x]) n++; return n/((x1-x0)*(y1-y0)); }
+// 線で消した字を見つける：欄の中を横に走る線のうち、欄の幅いっぱいの印刷の線ではなく、字の上を通る短めの線を「消し線」とみなし、
+// その線が通っている字のかたまりを「消した字」として数えない
+function strikeSegs(L,x0,x1,y0,y1,m,W,H){ // m：欄の中の字だけ（印刷の線を除いたもの）
+  const out=[]; const need=Math.max(10,W*0.45), gap=2;
+  for(let y=1;y<H-1;y++){ let st=-1,last=-99,len=0;
+    const end=()=>{ if(len>=need){ // 線の上と下の両方に字があれば、字の上を通る消し線
+        let up=0,dn=0; const ry=Math.max(2,Math.round(H*0.12)); for(let x=st;x<=last;x++){ for(let k=2;k<=ry;k++){ if(y-k>=0&&m[(y-k)*W+x]) up++; if(y+k<H&&m[(y+k)*W+x]) dn++; } }
+        if(up>len*0.3&&dn>len*0.3) out.push([st,last,y]); }
+      st=-1; len=0; };
+    for(let x=0;x<W;x++){ if(m[y*W+x]){ if(st<0||x-last>gap+1){ end(); st=x; len=0; } len+=1+(st>=0&&x-last>1&&x-last<=gap+1?x-last-1:0); last=x; } }
+    end(); }
+  return out; }
+function liveInk(L,x0,x1,y0,y1){ // 消し線が通っていない字の濃さ（0〜1）と、消し線があったか
+  const {w,h,b,lines}=L; x0=Math.max(0,Math.floor(x0)); x1=Math.min(w,Math.floor(x1)); y0=Math.max(0,Math.floor(y0)); y1=Math.min(h,Math.floor(y1));
+  const W=x1-x0,H=y1-y0; if(W<4||H<4) return {v:0,struck:false};
+  const m=new Uint8Array(W*H); for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(y+y0)*w+x+x0; m[y*W+x]=(b[i]&&!lines[i])?255:0; }
+  const {comps}=label(m,W,H), S=strikeSegs(L,x0,x1,y0,y1,m,W,H); let n=0, struck=false;
+  for(const c of comps){ if(c.n<4) continue; const hit=S.some(([a,e,y])=>y>=c.y0&&y<=c.y1&&a<=c.x1&&e>=c.x0); if(hit){ struck=true; continue; } n+=c.n; }
+  return {v:n/(W*H),struck}; }
 // 線の画素を白くした灰色の画像から、範囲の中の字のまわりだけを切り抜く（数字読み取り用）
 function tightCrop(L,x0,x1,y0,y1,yc,yr,mode){
   const {w,h,b,lines,g}=L; x0=Math.max(0,Math.floor(x0)); x1=Math.min(w,Math.ceil(x1)); y0=Math.max(0,Math.floor(y0)); y1=Math.min(h,Math.ceil(y1));
   const W=x1-x0,H=y1-y0; if(W<4||H<4) return null;
   const m=new Uint8Array(W*H); for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(y+y0)*w+x+x0; m[y*W+x]=(b[i]&&!lines[i])?255:0; }
   const {comps}=label(m,W,H); const minA=Math.max(8,(yr*yr)*0.02);
-  let keep=comps.filter(c=>c.n>=minA);
+  const S=strikeSegs(L,x0,x1,y0,y1,m,W,H);   // 線で消した字は読まない
+  let keep=comps.filter(c=>c.n>=minA&&!S.some(([a,e,y])=>y>=c.y0&&y<=c.y1&&a<=c.x1&&e>=c.x0));
   const inBand=c=>{ const a=Math.max(c.y0+y0,yc-yr/2), b2=Math.min(c.y1+y0,yc+yr/2); return Math.max(0,b2-a+1)/(c.y1-c.y0+1); };
   if(mode==='time'){ keep=keep.filter(c=>inBand(c)>=0.5&&!(c.x1-c.x0<yr*0.18&&c.y1-c.y0>yr*2.4)); }
   else { if(!keep.length) return null; const best=keep.reduce((a,c)=>Math.abs(c.cy+y0-yc)<Math.abs(a.cy+y0-yc)?c:a); keep=keep.filter(c=>Math.abs(c.cy-best.cy)<yr*0.6);
@@ -193,11 +213,12 @@ async function analyze(file,opt){
   const hiR=Math.abs(L.ang)>0.05?rotCanvas(L.hi,-L.ang):L.hi; const k=hiR.width/L.w;
   if(L.hi!==hiBase) free(hiBase); if(hiR!==L.hi) free(L.hi); L.hi=null;
   const rows=rowsOf(L);
-  const times=[], tsumi=[], oroshi=[];
+  const times=[], tsumi=[], oroshi=[], struckCargo=[];
   rows.forEach(r=>{ const hb=r.d/2;
     [[r.y-hb,r.y],[r.y,r.y+hb]].forEach(([a,b])=>times.push(frac(L,X(r,152),X(r,226),a+hb*0.14,b-hb*0.14)));
-    tsumi.push(frac(L,X(r,482),X(r,536),r.y-hb*0.9,r.y+hb*0.9));
-    oroshi.push(frac(L,X(r,424),X(r,480),r.y-hb*0.9,r.y+hb*0.9)); });   // 卸荷個数の欄
+    // 積荷・卸荷の欄は、線で消した字を数えない
+    const ts=liveInk(L,X(r,484),X(r,534),r.y-hb*0.9,r.y+hb*0.9), os=liveInk(L,X(r,426),X(r,478),r.y-hb*0.9,r.y+hb*0.9);
+    tsumi.push(ts.v); oroshi.push(os.v); struckCargo.push((ts.struck?'積':'')+(os.struck?'卸':'')); });
   const written=[]; times.forEach((v,j)=>{ if(v>0.06) written.push(j); });
   if(!written.length){ free(hiR); return {ok:false,empty:true}; }
   const lastRow=Math.floor(written[written.length-1]/2)+1;
@@ -211,7 +232,7 @@ async function analyze(file,opt){
     const meterC=tightCrop(L,X(r,-60),X(r,62),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
     // 実車：この行で積んだ、または次の行で降ろす（荷を載せたまま途中の店に寄った区間も実車になる）
     const ld=tsumi[pr-1]>0.035, nextUn=(oroshi[pr]||0)>0.05;
-    out.push({paperRow:pr, loaded:ld||nextUn, cargoIn:ld, cargoOut:oroshi[pr-1]>0.05, hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
+    out.push({paperRow:pr, loaded:ld||nextUn, cargoIn:ld, cargoOut:oroshi[pr-1]>0.05, struck:struckCargo[pr-1], hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
       img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
@@ -222,7 +243,7 @@ async function analyze(file,opt){
   let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
-  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),times:times.map(v=>+v.toFixed(3))}};
+  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),struck:struckCargo,times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();

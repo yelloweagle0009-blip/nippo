@@ -118,7 +118,7 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 20</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 21</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
@@ -287,7 +287,7 @@ function render(){
   $('placeList').innerHTML=knownPlaces().map(p=>`<option value="${esc(p)}">`).join('');
   $('mS').value=D.start; $('mE').value=D.end;
   const ah=D.autoHead||{}; [['mS','start'],['mE','end']].forEach(([id,f])=>{ $(id).classList.toggle('auto',ah[f]===1); $(id).classList.toggle('maybe',ah[f]===2); });
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、よく行く場所と前に入れた場所の中から一番近いものを入れます（一覧に無い店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は、「積荷個数」に書いてある行（そこで積んだ）と、次の行の「卸荷個数」（次で降ろす）から決めています。食い違いがあれば下に注意が出ます。線で消した字も「書いてある」と見てしまうので、確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、よく行く場所と前に入れた場所の中から一番近いものを入れます（一覧に無い店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は、「積荷個数」に書いてある行（そこで積んだ）と、次の行の「卸荷個数」（次で降ろす）から決めています。食い違いがあれば下に注意が出ます。線で消した字（字の上に横線を引いたもの）は、書いていないものとして扱います。塗りつぶしなど消し方によっては見落とすことがあるので、注意が出たら確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -445,8 +445,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=20"></script>
-<script src="ocr.js?v=20"></script>
+<script src="photo.js?v=21"></script>
+<script src="ocr.js?v=21"></script>
 
 </body>
 </html>
