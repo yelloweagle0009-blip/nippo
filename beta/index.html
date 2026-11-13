@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0e5a6b">
+<meta name="theme-color" content="#3f1868">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -13,17 +13,18 @@
 <style>
 /* 紙の運行記録の行番号どおりに縦に並べ、行と行のあいだに「実車／空車」の切り替え。上に答え2つだけ */
 :root{
-  --paper:#eef1ef; --sheet:#ffffff; --ink:#1b2321; --muted:#5a6864; --rule:#c6d0cc;
-  --accent:#0e5a6b; --accent-ink:#ffffff; --accent-soft:#deedf0; --warn:#9c4d0a; --warn-soft:#fbeee2;
+  --paper:#f5f2fa; --sheet:#ffffff; --ink:#221a33; --muted:#6c6480; --rule:#ddd4ea;
+  --accent:#5a2a91; --accent-ink:#ffffff; --accent-soft:#efe6f9; --warn:#9c4d0a; --warn-soft:#fbeee2;
+  --hero1:#3f1868; --hero2:#7440b5; --glow:rgba(90,42,145,.14);
   --f-body:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
   --f-num:"BIZ UDGothic","BIZ UDPGothic",ui-monospace,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --paper:#111615; --sheet:#1a2120; --ink:#e5ebe9; --muted:#9aa7a3; --rule:#34403d;
-  --accent:#6cc2d4; --accent-ink:#0b1d22; --accent-soft:#1c3338; --warn:#e8a46a; --warn-soft:#3a2816; color-scheme:dark}}
+  --paper:#15111d; --sheet:#1f1a2a; --ink:#ece6f6; --muted:#a79fba; --rule:#3a3150;
+  --accent:#c3a2f0; --accent-ink:#1d1030; --accent-soft:#2c2240; --warn:#e8a46a; --warn-soft:#3a2816; --hero1:#2a1146; --hero2:#4f2a80; --glow:rgba(0,0,0,.35); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --paper:#111615; --sheet:#1a2120; --ink:#e5ebe9; --muted:#9aa7a3; --rule:#34403d;
-  --accent:#6cc2d4; --accent-ink:#0b1d22; --accent-soft:#1c3338; --warn:#e8a46a; --warn-soft:#3a2816; color-scheme:dark}
+  --paper:#15111d; --sheet:#1f1a2a; --ink:#ece6f6; --muted:#a79fba; --rule:#3a3150;
+  --accent:#c3a2f0; --accent-ink:#1d1030; --accent-soft:#2c2240; --warn:#e8a46a; --warn-soft:#3a2816; --hero1:#2a1146; --hero2:#4f2a80; --glow:rgba(0,0,0,.35); color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--sheet)}
@@ -102,6 +103,34 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
 .cg{display:block;font-size:12px;color:var(--muted,#667);margin-top:2px}
 #progBar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--accent);color:#fff;font-size:14px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -2px 8px rgba(0,0,0,.25)}
 #progBar[hidden]{display:none}
+
+/* 紫を基調にした見た目（会社の色） */
+header{background:linear-gradient(135deg,var(--hero1),var(--hero2));border-bottom:0;box-shadow:0 4px 14px var(--glow);color:#fff}
+body::before{background:var(--hero1)}
+.ans div{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:8px 12px;backdrop-filter:blur(2px)}
+.ans small{color:rgba(255,255,255,.82)}
+.ans b{color:#fff;font-size:28px}
+.ans .bad b{color:#ffd18a}
+.ans em{color:#ffd18a}
+header .sub{color:rgba(255,255,255,.8)}
+h2{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--accent);letter-spacing:.12em;margin:22px 0 10px}
+h2::before{content:"";width:5px;height:18px;border-radius:3px;background:linear-gradient(var(--hero2),var(--hero1))}
+.mt,.photo{border:0;border-radius:16px;box-shadow:0 2px 10px var(--glow)}
+.card{border:0;border-radius:16px;box-shadow:0 2px 12px var(--glow)}
+.ch{background:linear-gradient(90deg,var(--accent-soft),transparent);border-bottom:1px solid var(--rule)}
+.ch b{display:inline-flex;align-items:baseline;gap:2px;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:4px 12px 3px;font-size:20px}
+.ch b small{color:var(--accent-ink);opacity:.85}
+.btn{border-radius:999px;font-weight:700}
+.btn.solid{background:linear-gradient(135deg,var(--hero1),var(--hero2));border-color:transparent;box-shadow:0 3px 10px var(--glow);color:#fff}
+.tg{border-radius:999px;font-weight:700}
+.tg[aria-pressed="true"]{background:linear-gradient(135deg,var(--hero1),var(--hero2));border-color:transparent;color:#fff}
+.seg{border-left-color:var(--rule)}
+.seg.on{border-left-color:var(--accent)}
+input:not([type=checkbox]){border-radius:10px}
+input[type=checkbox]{accent-color:var(--accent);width:20px;height:20px}
+input:not([type=checkbox]):focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
+.crop{border-radius:10px}
+#progBar{background:linear-gradient(135deg,var(--hero1),var(--hero2))}
 </style>
 
 </head>
@@ -126,7 +155,7 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 25</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 26</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
@@ -345,7 +374,7 @@ function update(){
     let v=null, why='';
     if(j===i-1&&j>=0){ const d=routeDist(D.rows[j].place,r.place); if(d&&okv(M[j]+d.km)){ v=M[j]+d.km; why=`${pname(D.rows[j].place)}→${pname(r.place)} は前に ${d.km}km（${d.n}回分）`; } }
     if(v==null&&k===i+1){ const d=routeDist(r.place,D.rows[k].place); if(d&&okv(M[k]-d.km)){ v=M[k]-d.km; why=`${pname(r.place)}→${pname(D.rows[k].place)} は前に ${d.km}km（${d.n}回分）`; } }
-    if(v==null&&j===i-1&&k===i+1&&!!D.rows[j].loaded===!!r.loaded){ v=Math.round((M[j]+M[k])/2); why=`前後どちらも${r.loaded?'実車':'空車'}なので、どの値でも実車距離の合計は変わりません`; }
+    if(v==null&&j>=0&&j===i-1&&k===i+1&&!!D.rows[j].loaded===!!r.loaded){ v=Math.round((M[j]+M[k])/2); why=`前後どちらも${r.loaded?'実車':'空車'}なので、どの値でも実車距離の合計は変わりません`; }
     if(v!=null) g.innerHTML=`<button class="estb" data-est="${i}" data-v="${v}">メーター推定 ${String(v).slice(-3)} を入れる<br><small>${esc(why)}</small></button>`;
     else if((j>=0||k>=0)&&((i>0&&D.rows[i-1].loaded)||(i<n-1&&r.loaded))) g.innerHTML='<p>メーターが空欄です。この行と前後の行に場所を入れると、前に走った同じ区間の距離から推定します。</p>'; });
   const cw=c.warn.slice(); if(ests.length) cw.push(`${ests.join('・')}行目のメーターは推定した値です。紙に書くときは推定と分かるようにするか、運行管理者に確かめてください。`);
@@ -471,8 +500,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=25"></script>
-<script src="ocr.js?v=25"></script>
+<script src="photo.js?v=26"></script>
+<script src="ocr.js?v=26"></script>
 
 </body>
 </html>
