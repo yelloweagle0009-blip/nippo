@@ -118,7 +118,7 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 21</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 23</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
@@ -192,7 +192,13 @@ function compute(rows,rests,waits=[],mt={}){
   if(missT) warn.push(`時刻が足りない区間が${missT}つある（その区間は運転時間に入っていない）`);
   let jissha=0, missK=0; segs.forEach(x=>{ if(x.loaded){ if(x.km==null) missK++; else jissha+=x.km; } });
   // 実車・空車の食い違い（写真の「積荷個数」「卸荷個数」と比べる）
+  const garage=r=>/車庫/.test(String(r.place||''));   // 車庫を出る区間（1日の最初の区間など）はふだん空車
   for(let i=0;i<rows.length-1;i++){ const a=rows[i].cargo||{}, b=rows[i+1].cargo||{};
+    if(i===0||garage(rows[i])){
+      if(!rows[i].loaded&&b.out) warn.push(`${i+3}行目で荷を降ろしています。${i+2}行目を出るときから荷を積んでいた日（前のトラックの荷を積んだまま乗り換えた日など）なら、${i+2}→${i+3}行目を実車にしてください`);
+      if(rows[i].loaded&&!a.in&&b.out) warn.push(`${i+2}→${i+3}行目は、${i+3}行目で荷を降ろすだけなので、出るときから荷を積んでいた（乗り換えたトラックの荷など）と読んで実車にしました。空車で出た日なら空車に直してください`);
+      if(!rows[i].loaded&&a.in) warn.push(`${i+2}行目で荷を積んでいるのに、${i+2}→${i+3}行目が空車になっている`);
+      continue; }
     if(!rows[i].loaded&&b.out) warn.push(`${i+3}行目で荷を降ろしているのに、${i+2}→${i+3}行目が空車になっている`);
     if(!rows[i].loaded&&a.in) warn.push(`${i+2}行目で荷を積んでいるのに、${i+2}→${i+3}行目が空車になっている`); }
   if(missK) warn.push(`実車の区間のうち${missK}つでメーターが足りない（実車距離に入っていない）`);
@@ -287,7 +293,7 @@ function render(){
   $('placeList').innerHTML=knownPlaces().map(p=>`<option value="${esc(p)}">`).join('');
   $('mS').value=D.start; $('mE').value=D.end;
   const ah=D.autoHead||{}; [['mS','start'],['mE','end']].forEach(([id,f])=>{ $(id).classList.toggle('auto',ah[f]===1); $(id).classList.toggle('maybe',ah[f]===2); });
-  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、よく行く場所と前に入れた場所の中から一番近いものを入れます（一覧に無い店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は、「積荷個数」に書いてある行（そこで積んだ）と、次の行の「卸荷個数」（次で降ろす）から決めています。食い違いがあれば下に注意が出ます。線で消した字（字の上に横線を引いたもの）は、書いていないものとして扱います。塗りつぶしなど消し方によっては見落とすことがあるので、注意が出たら確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
+  $('photoTop').innerHTML=PH?`<div class="photo"><p class="note" style="margin:0 0 6px">写真から数字を自動で読みます。<b>青い欄</b>は読みが揃った数字、<b>黄色い欄</b>は自信のない数字です。どちらも写真と見比べて、違っていたら打ち直してください。空欄は読めなかった欄なので、写真を見て打ってください。始業・終業メーターも写真から読んで、空欄なら上の「メーター」欄に入れます（走行粁と合えば青）。店名も読んで、よく行く場所と前に入れた場所の中から一番近いものを入れます（一覧に無い店名は読んだ文字のまま黄色）。最初と最後の行のメーターは空欄のままで、始業・終業の値が使われます。実車／空車は、「積荷個数」に書いてある行（そこで積んだ）と、次の行の「卸荷個数」（次で降ろす）から決めています。車庫を出る区間（1日の最初の区間など）は、ふだんは空車にします。ただし次の行で荷を降ろすだけ（積んでいない）なら、出るときから荷を積んでいた（乗り換えたトラックの荷など）と読んで実車にし、下に知らせを出します。食い違いがあれば下に注意が出ます。線で消した字（字の上に横線を引いたもの）は、書いていないものとして扱います。塗りつぶしなど消し方によっては見落とすことがあるので、注意が出たら確かめてください。</p>${PH.header?`<img class="crop" src="${PH.header}" alt="写真の始業・終業メーター">`:''}<div class="btns"><button class="btn" id="photoDel">写真を消す</button><button class="btn" id="learnExp">読み取りの記録を書き出す</button></div><p class="note">打ち込んだ正しい数字と、その欄の小さな切り抜きを、このスマホの中に記録しています（外へは送りません）。あとで読み取りを鍛えるのに使います。</p></div>`:'';
   $('waits').innerHTML=D.waits.map((r,j)=>`<div class="rest">
     <input id="w${j}f" data-w="${j}" data-f="from" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.from)}" aria-label="待機${j+1} から">
     <span>〜</span>
@@ -371,7 +377,7 @@ const onPhoto=async e=>{
   const apply=()=>{
     learnFlush();   // 前の写真の分を、行を作り直す前に記録する
     D.day=Date.now();  // 写真ごとに新しい日として距離を覚える
-    D.rows=res.rows.map(r=>({arr:'',dep:'',meter:'',loaded:r.loaded,cargo:{in:!!r.cargoIn,out:!!r.cargoOut}}));
+    D.rows=res.rows.map(r=>({arr:'',dep:'',meter:'',loaded:r.loaded,cargo:{in:!!r.cargoIn,out:!!r.cargoOut,outOnly:!!r.cargoOutOnly}}));
     if(D.rows.length<2) D.rows.push(newRow());
     const small=cv=>{ if(!cv) return null; const h=48, w=Math.max(8,Math.round(cv.width*h/cv.height)), c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(cv,0,0,w,h); return c.toDataURL('image/jpeg',0.8); };
     PH={rows:res.rows.map(r=>r.img),header:res.header,t:Date.now(),
@@ -414,7 +420,7 @@ async function readDigits(prow,head){
     try{
       const known=knownPlaces();
       const pl=await window.NippoOCR.readPlaces(prow,known,()=>{ $('busy').textContent='店名を読み取っています…'; });
-      if(D.rows===rowsAt) pl.forEach((x,i)=>{ const row=D.rows[i]; if(!x||!row||pname(row.place)) return; row.place=x.name; row.auto=row.auto||{}; row.auto.place=x.tier==='blue'?1:2; if(x.raw) row.placeRaw=1; x.tier==='blue'?pn++:pm++; });
+      if(D.rows===rowsAt) pl.forEach((x,i)=>{ const row=D.rows[i]; if(!x||!row||pname(row.place)) return; row.place=x.name; if(/車庫/.test(x.name)){ const nx=D.rows[i+1]; row.loaded=!!(row.cargo&&row.cargo.in)||!!(nx&&nx.cargo&&nx.cargo.outOnly); } /* 車庫を出る区間はふだん空車（次で降ろすだけなら実車） */ row.auto=row.auto||{}; row.auto.place=x.tier==='blue'?1:2; if(x.raw) row.placeRaw=1; x.tier==='blue'?pn++:pm++; });
     }catch(e){}
     save(); render();
     if(pn+pm) hn=(hn?hn+' ':'')+`店名：青 ${pn}か所・黄 ${pm}か所。`;
@@ -445,8 +451,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=21"></script>
-<script src="ocr.js?v=21"></script>
+<script src="photo.js?v=23"></script>
+<script src="ocr.js?v=23"></script>
 
 </body>
 </html>

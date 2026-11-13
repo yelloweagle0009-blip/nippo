@@ -232,7 +232,10 @@ async function analyze(file,opt){
     const meterC=tightCrop(L,X(r,-60),X(r,62),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
     // 実車：この行で積んだ、または次の行で降ろす（荷を載せたまま途中の店に寄った区間も実車になる）
     const ld=tsumi[pr-1]>0.035, nextUn=(oroshi[pr]||0)>0.05;
-    out.push({paperRow:pr, loaded:ld||nextUn, cargoIn:ld, cargoOut:oroshi[pr-1]>0.05, struck:struckCargo[pr-1], hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
+    // 1日の最初の区間（車庫を出る）はふだん空車。ただし次の行が「はっきり降ろすだけ（積んでいない）」なら、
+    // 出るときから荷を積んでいた（乗り換えたトラックの荷など）として実車にする
+    const first=pr===2, nextOnlyUn=(oroshi[pr]||0)>0.07&&!((tsumi[pr]||0)>0.035);
+    out.push({paperRow:pr, loaded:first?(ld||nextOnlyUn):(ld||nextUn), cargoIn:ld, cargoOut:oroshi[pr-1]>0.05, cargoOutOnly:oroshi[pr-1]>0.07&&!ld, struck:struckCargo[pr-1], hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
       img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
