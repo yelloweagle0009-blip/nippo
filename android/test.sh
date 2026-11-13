@@ -7,6 +7,16 @@ adb shell am start -W -n jp.nippo.unkou/.MainActivity
 sleep 30
 adb exec-out screencap -p > out/shot1.png
 PID=$(adb shell pidof jp.nippo.unkou | tr -d '\r')
+if [ -z "$PID" ]; then
+  # アプリが落ちていたら、理由（例外）を書き出してから、もう一度開く
+  echo "アプリが動いていない。落ちた理由："
+  adb logcat -d -t 2000 | grep -A 30 -E "FATAL EXCEPTION|AndroidRuntime" | head -80
+  adb shell am start -W -n jp.nippo.unkou/.MainActivity
+  sleep 30
+  PID=$(adb shell pidof jp.nippo.unkou | tr -d '\r')
+  echo "開き直したあと PID=$PID"
+  [ -z "$PID" ] && { adb logcat -d -t 2000 | grep -A 30 -E "FATAL EXCEPTION|AndroidRuntime" | tail -80; exit 9; }
+fi
 adb forward tcp:9222 localabstract:webview_devtools_remote_$PID
 node android/test.js > out/test.txt 2>&1; RC=$?
 cat out/test.txt
