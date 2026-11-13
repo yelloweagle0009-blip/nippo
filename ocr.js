@@ -163,7 +163,31 @@ function decide(n,reads,opt,Wt,T){
     st=nx; }
   const bestT=[...st.values()].sort((a,b)=>b.sc-a.sc)[0];
   tc.forEach((c,j)=>{ const v=bestT.path[j]; if(v==null) return; const t=tierOf(v,c.cand,T.t); if(t) res[c.i][c.f]={v:v.slice(0,-2)+':'+v.slice(-2),tier:t,score:+(c.cand.find(e=>e[0]===v)[1]).toFixed(1)}; });
+  fillGaps(n,reads,res,meterAt,tc,mc,Wt);
   return res;
+}
+// 空欄の補い：前後の欄が決まっているのに読めなかった欄を、前後のあいだに入る読みだけで埋める（黄色＝自信なし）。
+// ・メーター：読んだ候補のうち、前の行より大きく次の行より小さいもの（例：「916」としか読めない多数より、前後680〜751に入る「716」）
+// ・時刻：分だけしか読めなかった欄（「50」）は、前後の時刻のあいだに入る時を補う（例：7:45と9:30のあいだ → 8:50）
+// 候補が1つに決まらないとき（同じ重みで2つ以上入る）は埋めない
+function fillGaps(n,reads,res,meterAt,tc,mc,Wt){
+  const pick=list=>{ if(!list.length) return null; list.sort((a,b)=>b[1]-a[1]); if(list[1]&&list[1][1]>=list[0][1]*0.8) return null; return list[0]; };
+  for(const c of mc){ if(res[c.i].meter) continue;
+    let j=c.i-1; while(j>=0&&meterAt[j]==null) j--; let k=c.i+1; while(k<n&&meterAt[k]==null) k++;
+    if(j<0||k>=n) continue; const lo=meterAt[j], span=(meterAt[k]-lo+1000)%1000;
+    const list=candidates(reads[c.i+'_meter']||[],true,Wt).filter(([v])=>{ const d=(+v-lo+1000)%1000; return d>0&&d<span; });
+    const p=pick(list); if(p){ res[c.i].meter={v:p[0],tier:'yellow',score:+p[1].toFixed(1),fill:1}; meterAt[c.i]=+p[0]; } }
+  const tm=c=>{ const x=res[c.i][c.f]; return x?mins(x.v.replace(':','')):null; };
+  tc.forEach((c,idx)=>{ if(res[c.i][c.f]) return;
+    let lo=null; for(let q=idx-1;q>=0;q--){ const m=tm(tc[q]); if(m!=null){ lo=m; break; } }
+    let hi=null; for(let q=idx+1;q<tc.length;q++){ const m=tm(tc[q]); if(m!=null){ hi=m; break; } }
+    if(lo==null||hi==null) return;
+    const prev=idx>0?tc[idx-1]:null, km=(c.f==='arr'&&prev&&prev.f==='dep'&&prev.i===c.i-1&&meterAt[c.i-1]!=null&&meterAt[c.i]!=null)?(meterAt[c.i]-meterAt[c.i-1]+1000)%1000:null;
+    const sc={}; const add=(v,w)=>{ const m=mins(v); if(m<lo||m>hi) return; if(km!=null&&(m-lo)*1.5<km) return; sc[v]=(sc[v]||0)+w; };   // 時速90kmより速くなる時刻は入れない
+    for(const [v,w] of candidates(reads[c.i+'_'+c.f]||[],false,Wt)) add(v,w);
+    for(const x of reads[c.i+'_'+c.f]||[]){ const w=Wt['T'+x.s]||0; if(!w||x.m<0.5) continue; const d=half(x.t).replace(/\D/g,''); if(d.length!==2||+d>59) continue;
+      for(let h=Math.floor(lo/60);h<=Math.floor(hi/60);h++) add(String(h)+d,w*0.7); }
+    const p=pick(Object.entries(sc)); if(p) res[c.i][c.f]={v:p[0].slice(0,-2)+':'+p[0].slice(-2),tier:'yellow',score:+p[1].toFixed(1),fill:1}; });
 }
 // 前の版の決め方（比べるために残す）：前から順に1欄ずつ、青で決めた値だけを次の点検に使う
 function decideOld(n,reads,opt,Wt,T){
