@@ -155,7 +155,7 @@ input:not([type=checkbox]):focus{border-color:var(--accent);box-shadow:0 0 0 3px
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 27</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 28</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
@@ -500,8 +500,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=27"></script>
-<script src="ocr.js?v=27"></script>
+<script src="photo.js?v=28"></script>
+<script src="ocr.js?v=28"></script>
 
 </body>
 </html>
