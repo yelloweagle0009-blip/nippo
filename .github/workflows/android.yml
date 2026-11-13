@@ -102,6 +102,7 @@ jobs:
           target: google_apis
           ram-size: 4096M
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back emulated
           script: bash android/test.sh
       - uses: actions/upload-artifact@v4
         if: always()
