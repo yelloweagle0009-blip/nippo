@@ -40,15 +40,20 @@ header .pad{padding-block:10px}
 .sub{font-size:12px;color:var(--muted);margin-top:4px}
 main .pad{padding-block:12px 80px}
 h2{font-size:14px;color:var(--accent);letter-spacing:.15em;margin:18px 0 8px}
-.head,.row,.seg{display:grid;grid-template-columns:1.15fr 1.7em 1.35fr 1.6em;gap:6px;align-items:center}
+.row{display:grid;grid-template-columns:1fr 1.3fr;gap:2px 8px;align-items:center}
+.row .lb{font-size:11px;color:var(--muted);letter-spacing:.05em}
+.card{background:var(--sheet);border:1.5px solid var(--rule);border-radius:12px;padding:0 10px 10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.ch{display:flex;align-items:center;gap:10px;margin:0 -10px 8px;padding:6px 10px;background:var(--accent-soft);border-bottom:1px solid var(--rule)}
+.ch b{font-family:var(--f-num);font-size:24px;line-height:1;color:var(--accent);white-space:nowrap}
+.ch b small{font-size:12px;margin-left:2px;font-family:var(--f-body)}
+.cpl{flex:1;min-width:0;font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .crop{margin:0 0 8px}
 .tm{display:grid;grid-template-columns:1.3em 1fr;gap:4px 4px;align-items:center}
 .tm i{font-style:normal;font-size:13px;color:var(--muted);text-align:center}
-.row{border-top:1px solid var(--rule);padding-top:6px}
 .mt{display:grid;grid-template-columns:auto 1fr auto;gap:6px 8px;align-items:center;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;margin:0 0 12px}
 .mt label{font-size:14px;color:var(--muted)}
 .mt small{font-size:13px;color:var(--muted)}
 .mt b{font-family:var(--f-num);font-size:22px;font-variant-numeric:tabular-nums;text-align:center}
-.head{font-size:12px;color:var(--muted);padding:0 0 2px;text-align:center}
 .no{font-family:var(--f-num);color:var(--accent);text-align:center}
 input{font:inherit;font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:17px;color:var(--ink);background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:9px 6px;width:100%;min-width:0;text-align:center}
 input::placeholder{color:var(--muted);opacity:.6}
@@ -57,7 +62,7 @@ input.ng{border-color:var(--warn);background:var(--warn-soft)}
 input.auto{border-color:#3d74b8;background:#e4eefb}
 input.maybe{border-color:#c79a1d;background:#fdf3d6}
 input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
-.pl{grid-column:1/-1;display:grid;grid-template-columns:auto 1fr;gap:6px;align-items:center}
+.pl{grid-column:1/-1;margin-top:6px;display:grid;grid-template-columns:auto 1fr;gap:6px;align-items:center}
 .pl span{font-size:12px;color:var(--muted)}
 .pl input{text-align:left;font-family:var(--f-body);font-size:15px;padding:7px 8px}
 .sug{grid-column:1/-1}
@@ -71,9 +76,12 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
 :root[data-theme="dark"] .estb{color:#c4adf5;border-color:#a98ce6}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted);margin:6px 0 0}
 .chk input{width:auto;margin-top:3px}
-.x{border:0;background:transparent;color:var(--muted);font:inherit;font-size:18px;padding:0}
-.seg{margin:6px 0;font-size:13px;color:var(--muted)}
-.seg>div{grid-column:1/4;display:flex;align-items:center;gap:8px}
+.x{border:0;background:transparent;color:var(--muted);font:inherit;font-size:22px;padding:0 4px;line-height:1}
+.seg{margin:0 0 0 22px;padding:8px 0 8px 14px;border-left:4px dashed var(--rule);font-size:13px;color:var(--muted)}
+.seg.on{border-left:4px solid var(--accent)}
+.seg>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.seg .sl{font-size:12px;margin-bottom:4px}
+.seg .sl::before{content:"↓ ";font-weight:700}
 .tg{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--sheet);color:var(--muted);border-radius:99px;padding:3px 12px;min-width:5.5em}
 .tg[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
 .seg span{font-family:var(--f-num);font-variant-numeric:tabular-nums}
@@ -118,11 +126,10 @@ input.est{border:2px dashed #7b5cc4;background:#f1ecfb}
   <div class="btns" style="margin:0 0 6px"><button class="btn solid" id="camBtn">カメラで撮って行を作る</button><button class="btn" id="photoBtn">保存した写真から選ぶ</button><input type="file" id="camIn" accept="image/*" capture="environment" hidden><input type="file" id="photoIn" accept="image/*" hidden></div>
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 23</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 25</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
-  <div class="head"><span>メーター（欄外）</span><span></span><span>上が着・下が発</span><span></span></div>
   <div id="rows"></div>
   <div class="btns"><button class="btn solid" id="add">＋ 行を足す</button></div>
 
@@ -273,23 +280,35 @@ if(D.start==null) D.start=''; if(D.end==null) D.end=''; if(!D.day) D.day=Date.no
 const save=()=>{ try{localStorage.setItem(KEY,JSON.stringify(D));}catch(e){} };
 const fmt=m=>m==null?'—':Math.floor(m/60)+'時間'+(m%60)+'分';
 
+// 実車の区間に載っている荷の説明（「どこで積んだ荷を載せて走り、次でどうするか」）
+// 実車が続く区間をさかのぼって、そのあいだに積んだ行を集める（同じ荷の積みと降ろしを取り違えて見せないため）
+function cargoNote(i){ const R=D.rows, C=k=>(R[k]&&R[k].cargo)||{};
+  let s=i; while(s>0&&R[s-1].loaded) s--;
+  const src=[]; for(let k=s;k<=i;k++) if(C(k).in) src.push(k+2);
+  let txt=src.length?`${src.join('・')}行目で積んだ荷`:'出る前から積んでいた荷';
+  if(!C(i).in&&C(i).out&&i>s) txt+='の残り';
+  txt+='を載せて走る';
+  const nx=C(i+1); if(nx.out){ const last=i+1>=R.length-1||!R[i+1].loaded; txt+=`・${i+3}行目で${last?'全部降ろす':(nx.in?'降ろす':'一部を降ろす')}`; }
+  return txt; }
+function hints(){ D.rows.forEach((r,i)=>{ const el=document.getElementById('h'+i); if(!el) return; const C=k=>(D.rows[k]&&D.rows[k].cargo)||{};
+  el.textContent=r.loaded?cargoNote(i):[C(i).in?`${i+2}行目で積む`:'',C(i+1).out?`${i+3}行目で降ろす`:''].filter(Boolean).join('・'); }); }
 function render(){
   let h='';
   D.rows.forEach((r,i)=>{
+    h+=`<div class="card"><div class="ch"><b>${i+2}<small>行目</small></b><span class="cpl" id="t${i}">${esc(r.place||'')}</span><button class="x" data-del="${i}" aria-label="${i+2}行目を消す">×</button></div>`;
     if(PH&&PH.rows&&PH.rows[i]) h+=`<img class="crop" src="${PH.rows[i]}" alt="写真の${i+2}行目">`;
-    h+=`<div class="row">
+    h+=`<div class="row"><span class="lb">メーター</span><span class="lb">着・発</span>
       <input id="r${i}m" data-r="${i}" data-f="meter" class="${r.est&&r.est.meter?'est':(r.auto&&r.auto.meter?(r.auto.meter===2?'maybe':'auto'):'')}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.meter)}" aria-label="${i+2}行目 メーター">
-      <span class="no">${i+2}</span>
       <div class="tm"><i>着</i><input id="r${i}a" data-r="${i}" data-f="arr" class="${r.auto&&r.auto.arr?(r.auto.arr===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
         <i>発</i><input id="r${i}d" data-r="${i}" data-f="dep" class="${r.auto&&r.auto.dep?(r.auto.dep===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.dep)}" aria-label="${i+2}行目 発"></div>
-      <button class="x" data-del="${i}" aria-label="${i+2}行目を消す">×</button>
       <div class="pl"><span>場所</span><input id="r${i}p" data-r="${i}" data-f="place" class="${r.auto&&r.auto.place?(r.auto.place===2?'maybe':'auto'):''}" list="placeList" autocomplete="off" enterkeyhint="next" placeholder="例：KFK甲府南（前に入れた場所は候補に出ます）" value="${esc(r.place||'')}" aria-label="${i+2}行目 場所"></div>
-      <div class="sug" id="g${i}"></div></div>`;
+      <div class="sug" id="g${i}"></div></div></div>`;
     if(i<D.rows.length-1){ const ci=r.cargo&&r.cargo.in, co=D.rows[i+1].cargo&&D.rows[i+1].cargo.out;
-      const why=(ci||co)?`<small class="cg">${[ci?`${i+2}行目で積む`:'',co?`${i+3}行目で降ろす`:''].filter(Boolean).join('・')}</small>`:'';
-      h+=`<div class="seg"><div><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span>${why}</div></div>`; }
+      const why=`<small class="cg" id="h${i}"></small>`;
+      h+=`<div class="seg${r.loaded?' on':''}"><div class="sl">${i+2}行目 → ${i+3}行目</div><div><button class="tg" data-ld="${i}" aria-pressed="${!!r.loaded}">${r.loaded?'実車':'空車'}</button><span id="s${i}"></span>${why}</div></div>`; }
   });
   $('rows').innerHTML=h;
+  hints();
   $('placeList').innerHTML=knownPlaces().map(p=>`<option value="${esc(p)}">`).join('');
   $('mS').value=D.start; $('mE').value=D.end;
   const ah=D.autoHead||{}; [['mS','start'],['mE','end']].forEach(([id,f])=>{ $(id).classList.toggle('auto',ah[f]===1); $(id).classList.toggle('maybe',ah[f]===2); });
@@ -338,6 +357,7 @@ document.addEventListener('input',e=>{
   listOf(t)[f]=t.value;
   if(t.dataset.r!=null){ const r=D.rows[+t.dataset.r]; if(r.auto&&r.auto[f]){ delete r.auto[f]; t.classList.remove('auto','maybe'); } if(r.est&&r.est[f]){ delete r.est[f]; t.classList.remove('est'); } }
   if(t.dataset.k!=null&&D.autoHead&&D.autoHead[f]){ delete D.autoHead[f]; t.classList.remove('auto','maybe'); }
+  if(f==='place'&&t.dataset.r!=null){ const tt=$('t'+t.dataset.r); if(tt) tt.textContent=t.value; }
   save(); update();
 });
 document.addEventListener('change',e=>{
@@ -352,7 +372,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b) return; const d=b.dataset;
   if(d.est!=null){ const r=D.rows[+d.est]; r.meter=String(d.v).slice(-3); r.est={meter:1}; if(r.auto) delete r.auto.meter; save(); render(); return; }
-  if(d.ld!=null){ const r=D.rows[+d.ld]; r.loaded=!r.loaded; save(); b.setAttribute('aria-pressed',r.loaded); b.textContent=r.loaded?'実車':'空車'; update(); }
+  if(d.ld!=null){ const r=D.rows[+d.ld]; r.loaded=!r.loaded; save(); b.setAttribute('aria-pressed',r.loaded); b.textContent=r.loaded?'実車':'空車'; const sg=b.closest('.seg'); if(sg) sg.classList.toggle('on',!!r.loaded); hints(); update(); }
   else if(d.del!=null){ if(D.rows.length<=2) return; D.rows.splice(+d.del,1); save(); render(); }
   else if(d.rdel!=null){ D.rests.splice(+d.rdel,1); save(); render(); }
   else if(b.id==='add'){ D.rows.push(newRow()); save(); render(); $('r'+(D.rows.length-1)+'m').focus(); }
@@ -451,8 +471,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=23"></script>
-<script src="ocr.js?v=23"></script>
+<script src="photo.js?v=25"></script>
+<script src="ocr.js?v=25"></script>
 
 </body>
 </html>
