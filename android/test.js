@@ -83,6 +83,11 @@ const step = m => console.log('STEP', m);
   });
   console.log('TAIKI', JSON.stringify(tk));
   if (!tk.cam || !/見張り|動き/.test(tk.st)) { console.log('FAIL: 待機アラームでカメラが使えない、または見張りが始まらない'); process.exit(9); }
+  // 次の試験（電波を切ったとき）のために、日報の画面に戻しておく
+  await p.evaluate(() => { const b = document.getElementById('goBtn'); if (b && /止める/.test(b.textContent)) b.click(); return 1; }).catch(() => {});
+  await new Promise(ok => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method: 'Page.navigate', params: { url: 'https://yelloweagle0009-blip.github.io/nippo/' } })); });
+  await new Promise(r => setTimeout(r, 6000));
+  await p.waitForFunction(() => !!(window.NippoOCR && window.NippoPhoto && document.getElementById('rows')));
   console.log('PASS'); passed = true; process.exitCode = 0; clearInterval(keep);
   ws.close();
 })().catch(e => { console.log('FAIL', e && e.stack || e); clearInterval(keep); process.exit(1); });
