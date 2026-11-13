@@ -7,6 +7,7 @@ package jp.nippo.unkou;
 // ・このアプリ自体は「画面を表示する入れ物」なので、画面や読み取りの直しは入れ直さなくても自動で届く
 // ・入力した内容や覚えた場所はこのアプリの中に保存されるので、Chrome の閲覧履歴を消しても消えない
 // ・写真を撮る／選ぶ、読み取りの記録の書き出し（ダウンロードフォルダへ保存）に対応
+// ・待機アラーム（前のトラックが動いたら鳴らす）のカメラと、見張り中に画面を消さない仕組みに対応
 
 import android.app.Activity;
 import android.content.ContentValues;
@@ -16,7 +17,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ServiceWorkerClient;
 import android.webkit.ServiceWorkerController;
 import android.webkit.ValueCallback;
@@ -45,6 +50,10 @@ public class MainActivity extends Activity {
     static final String HOST = "yelloweagle0009-blip.github.io";
     static final String HOME = "https://" + HOST + "/nippo/";
     static final int REQ_FILE = 1;
+    static final int REQ_CAM = 2;
+    static final int REQ_CAM_PHOTO = 3;
+    Intent camIntent;   // カメラの許可を待っているあいだの「写真を撮る」
+    PermissionRequest camReq;   // 待機アラームのカメラの許可待ち
 
     WebView web;
     ValueCallback<Uri[]> pending;
@@ -65,6 +74,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
         s.setUserAgentString(s.getUserAgentString() + " NippoApp/1");
+        s.setMediaPlaybackRequiresUserGesture(false);   // 待機アラームの音を鳴らせるように
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -92,6 +102,21 @@ public class MainActivity extends Activity {
             @Override
             public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
                 return choose(cb, p);
+            }
+
+            // 待機アラーム（taiki.html）がカメラを使うとき：このアプリのページだけ、カメラだけを許可する
+            @Override
+            public void onPermissionRequest(PermissionRequest r) {
+                runOnUiThread(() -> {
+                    boolean ours = r.getOrigin() != null && HOST.equals(r.getOrigin().getHost());
+                    boolean cam = false;
+                    for (String x : r.getResources()) if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(x)) cam = true;
+                    if (!ours || !cam) { r.deny(); return; }
+                    if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                        camReq = r;
+                        requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM);
+                    } else r.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                });
             }
         });
         web.addJavascriptInterface(new Bridge(), "NippoAndroid");
@@ -149,6 +174,29 @@ public class MainActivity extends Activity {
         return new WebResourceResponse(mime, mime.startsWith("text/") ? "utf-8" : null, 200, "OK", h, in);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+        if (req == REQ_CAM_PHOTO && camIntent != null) {
+            Intent go = camIntent; camIntent = null;
+            if (!ok) {   // 許可されなかったら、保存した写真から選ぶ
+                camMode = false;
+                Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                pick.setType("image/*");
+                go = Intent.createChooser(pick, "写真を選ぶ");
+            }
+            try { startActivityForResult(go, REQ_FILE); }
+            catch (Exception e) { if (pending != null) { pending.onReceiveValue(null); pending = null; } }
+            return;
+        }
+        if (req != REQ_CAM || camReq == null) return;
+        if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) camReq.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+        else camReq.deny();
+        camReq = null;
+    }
+
     // 写真を撮る（カメラ）／保存した写真から選ぶ
     boolean choose(ValueCallback<Uri[]> cb, WebChromeClient.FileChooserParams p) {
         if (pending != null) pending.onReceiveValue(null);
@@ -176,6 +224,12 @@ public class MainActivity extends Activity {
             pick.addCategory(Intent.CATEGORY_OPENABLE);
             pick.setType("image/*");
             go = Intent.createChooser(pick, "写真を選ぶ");
+        }
+        // カメラの許可（CAMERA）を宣言したアプリは、許可が無いまま撮影を頼むと失敗するので、先に許可をもらう
+        if (camMode && Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            camIntent = go;
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM_PHOTO);
+            return true;
         }
         try {
             startActivityForResult(go, REQ_FILE);
@@ -227,6 +281,15 @@ public class MainActivity extends Activity {
             }
             final String m = msg;
             runOnUiThread(() -> Toast.makeText(MainActivity.this, m, Toast.LENGTH_LONG).show());
+        }
+
+        // 待機アラームで見張っているあいだ、画面を消さない
+        @JavascriptInterface
+        public void keepOn(boolean on) {
+            runOnUiThread(() -> {
+                if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            });
         }
 
         @JavascriptInterface
