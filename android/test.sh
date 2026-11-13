@@ -2,6 +2,7 @@
 # エミュレーター（パソコンの中の Android）で、アプリを入れて開き、写真の読み取りまで試す
 set -x
 adb install -r unkou-nippo.apk || exit 1
+adb shell pm grant jp.nippo.unkou android.permission.CAMERA   # 待機アラームの試験のため、カメラの許可を先に出しておく
 adb shell am start -W -n jp.nippo.unkou/.MainActivity
 sleep 30
 adb exec-out screencap -p > out/shot1.png

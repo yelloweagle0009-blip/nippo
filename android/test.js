@@ -68,6 +68,21 @@ const step = m => console.log('STEP', m);
   const g = (i, f) => res.res[i] && res.res[i][f] && res.res[i][f].v;
   const ok = g(0, 'dep') === '6:05' && g(1, 'arr') === '8:40' && g(1, 'dep') === '9:00' && g(1, 'meter') === '753' && g(2, 'arr') === '17:30' && res.places.join(',') === '車庫,KFKマシンセンター,車庫';
   if (!ok) { console.log('FAIL: 読んだ値が違う'); process.exit(3); }
+  // 待機アラーム：アプリの中でカメラが使えるか（許可の受け渡し）と、見張りが動くか
+  await new Promise(ok => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method: 'Page.navigate', params: { url: 'https://yelloweagle0009-blip.github.io/nippo/taiki.html' } })); });
+  await new Promise(r => setTimeout(r, 6000));
+  await p.waitForFunction(() => !!(window.NippoTaiki && document.getElementById('camBtn')));
+  const tk = await p.evaluate(async () => {
+    document.getElementById('camBtn').click();
+    for (let k = 0; k < 30 && !document.getElementById('v').videoWidth; k++) await new Promise(r => setTimeout(r, 500));
+    const v = document.getElementById('v'), st1 = document.getElementById('st').textContent;
+    if (!v.videoWidth) return { cam: false, st: st1 };
+    document.getElementById('goBtn').click();
+    await new Promise(r => setTimeout(r, 6500));
+    return { cam: true, w: v.videoWidth, h: v.videoHeight, st: document.getElementById('st').textContent, keepOn: !!(window.NippoAndroid && NippoAndroid.keepOn) };
+  });
+  console.log('TAIKI', JSON.stringify(tk));
+  if (!tk.cam || !/見張り|動き/.test(tk.st)) { console.log('FAIL: 待機アラームでカメラが使えない、または見張りが始まらない'); process.exit(9); }
   console.log('PASS'); passed = true; process.exitCode = 0; clearInterval(keep);
   ws.close();
 })().catch(e => { console.log('FAIL', e && e.stack || e); clearInterval(keep); process.exit(1); });
