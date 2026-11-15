@@ -97,7 +97,7 @@ const MODES={early:{th:0.2,hold:2,hold2:6},std:{th:0.25,hold:3,hold2:8},late:{th
 function alarmOff(){ beepStop(); $('alarm').classList.remove('on'); }
 $('goBtn').onclick=async()=>{
   if(timer){ clearInterval(timer); timer=null; $('goBtn').textContent='見張りを始める'; $('st').textContent='止めました'; keepOff(); return; }
-  try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); await audio.resume(); }catch(e){}   // 押したときに音を使えるようにしておく
+  if(!NATIVE){ try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); audio.resume(); }catch(e){} }   // 押したときに音を使えるようにしておく（待たない：許可が無いと終わらないことがあるため）
   watcher=new T.Watcher(MODES[$('sens').value]); await keepOn();
   $('st').textContent='止まるのを待っています（止まって3秒たつと見張ります）'; timer=setInterval(tick,500); $('goBtn').textContent='見張りを止める'; };
 $('sens').onchange=()=>{ if(watcher) Object.assign(watcher.o,MODES[$('sens').value]); };
