@@ -79,10 +79,14 @@ const step = m => console.log('STEP', m);
     if (!v.videoWidth) return { cam: false, st: st1 };
     document.getElementById('goBtn').click();
     await new Promise(r => setTimeout(r, 6500));
-    return { cam: true, w: v.videoWidth, h: v.videoHeight, st: document.getElementById('st').textContent, keepOn: !!(window.NippoAndroid && NippoAndroid.keepOn) };
+    // 目覚ましと同じアラームの音で鳴るか（鳴らして1.5秒後に鳴っているか、止めたら止まるか）
+    NippoAndroid.alarm(true); await new Promise(r => setTimeout(r, 1500)); const playing = NippoAndroid.alarmPlaying();
+    NippoAndroid.alarm(false); await new Promise(r => setTimeout(r, 800)); const stopped = !NippoAndroid.alarmPlaying();
+    return { cam: true, w: v.videoWidth, h: v.videoHeight, st: document.getElementById('st').textContent, keepOn: !!(window.NippoAndroid && NippoAndroid.keepOn), alarmPlaying: playing, alarmStopped: stopped, alarmVolume: NippoAndroid.alarmVolume() };
   });
   console.log('TAIKI', JSON.stringify(tk));
   if (!tk.cam || !/見張り|動き/.test(tk.st)) { console.log('FAIL: 待機アラームでカメラが使えない、または見張りが始まらない'); process.exit(9); }
+  if (!tk.alarmPlaying || !tk.alarmStopped) { console.log('FAIL: アラームの音が鳴らない、または止まらない'); process.exit(10); }
   // 次の試験（電波を切ったとき）のために、日報の画面に戻しておく
   await p.evaluate(() => { const b = document.getElementById('goBtn'); if (b && /止める/.test(b.textContent)) b.click(); return 1; }).catch(() => {});
   await new Promise(ok => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method: 'Page.navigate', params: { url: 'https://yelloweagle0009-blip.github.io/nippo/' } })); });
