@@ -19,6 +19,14 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -54,6 +62,8 @@ public class MainActivity extends Activity {
     static final int REQ_CAM_PHOTO = 3;
     Intent camIntent;   // カメラの許可を待っているあいだの「写真を撮る」
     PermissionRequest camReq;   // 待機アラームのカメラの許可待ち
+    Ringtone ring;               // 待機アラームの音（目覚ましと同じ「アラーム」の音量・音で鳴らす）
+    final Handler loop = new Handler(Looper.getMainLooper());
 
     WebView web;
     ValueCallback<Uri[]> pending;
@@ -283,6 +293,25 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> Toast.makeText(MainActivity.this, m, Toast.LENGTH_LONG).show());
         }
 
+        // 待機アラームの音を、動画の音量ではなく目覚ましと同じ「アラーム」の音量で鳴らす（止めるまで鳴り続ける）
+        @JavascriptInterface
+        public void alarm(boolean on) {
+            runOnUiThread(() -> { if (on) startAlarm(); else stopAlarm(); });
+        }
+
+        @JavascriptInterface
+        public boolean alarmPlaying() {
+            return ring != null && ring.isPlaying();
+        }
+
+        // アラームの音量（今の値と最大）。0 なら画面で知らせる
+        @JavascriptInterface
+        public String alarmVolume() {
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am == null) return "";
+            return am.getStreamVolume(AudioManager.STREAM_ALARM) + "/" + am.getStreamMaxVolume(AudioManager.STREAM_ALARM);
+        }
+
         // 待機アラームで見張っているあいだ、画面を消さない
         @JavascriptInterface
         public void keepOn(boolean on) {
@@ -296,6 +325,51 @@ public class MainActivity extends Activity {
         public String version() {
             try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; }
         }
+    }
+
+    // 目覚ましの音（端末で設定しているアラーム音）を、アラームの音量で、止めるまで繰り返し鳴らす。振動も止めるまで続ける
+    void startAlarm() {
+        stopAlarm();
+        Uri u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+        if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        AudioAttributes aa = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        if (u != null) {
+            ring = RingtoneManager.getRingtone(this, u);
+            if (ring != null) {
+                ring.setAudioAttributes(aa);
+                if (Build.VERSION.SDK_INT >= 28) ring.setLooping(true);
+                ring.play();
+                // 古い Android（9より前）は繰り返しの設定が無いので、止まったらまた鳴らす
+                if (Build.VERSION.SDK_INT < 28) loop.postDelayed(new Runnable() { public void run() {
+                    if (ring == null) return;
+                    if (!ring.isPlaying()) ring.play();
+                    loop.postDelayed(this, 1000);
+                } }, 1000);
+            }
+        }
+        Vibrator vb = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+        if (vb != null) {
+            long[] p = {0, 800, 400};
+            if (Build.VERSION.SDK_INT >= 26) vb.vibrate(VibrationEffect.createWaveform(p, 0), aa);
+            else vb.vibrate(p, 0);
+        }
+    }
+
+    void stopAlarm() {
+        loop.removeCallbacksAndMessages(null);
+        if (ring != null) { try { ring.stop(); } catch (Exception e) { } ring = null; }
+        Vibrator vb = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+        if (vb != null) vb.cancel();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopAlarm();
+        super.onDestroy();
     }
 
     @Override
