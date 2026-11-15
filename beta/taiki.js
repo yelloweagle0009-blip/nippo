@@ -2,8 +2,8 @@
 // 乗用車の「先行車発進お知らせ（告知）機能」と同じ考え方で動かす（ホンダ・トヨタの取扱説明書で確かめた仕組み）：
 // ・自分の車が止まっているあいだだけ見張る。自分が動き出したら見張りを休み、止まって3秒たったら自動でまた見張る
 //   （止まっているかは、枠の中の前の車が3秒間ほとんど変わらないことで判断する。隣を車や人が動いていても見張れるように）
-// ・前の車が「離れていく」ことを見つけたら知らせる（車はレーダーやカメラで距離を測るが、スマホにはないので、
-//   枠の中の前の車の後ろ姿が「小さくなっていく」ことで、離れていくと判断する）
+// ・前の車が動き出したら知らせる（枠の中の形の変化が続いたとき）。車はレーダーで距離を測るが、スマホにはないので、
+//   後ろ姿が「大きくなる」とき（自分が前に詰めている）だけは鳴らさない
 // ・知らせているあいだに自分の車が動き出したら、自動で音を止める
 // 人が前を横切る・ライトが当たる・明るさが変わる：形は変わっても「小さくなる」動きではないので鳴らさない
 // 自分の車が前に詰める：前の車の後ろ姿が「大きくなる」ので、前が離れたのとは区別できる
@@ -25,9 +25,9 @@
   // 見張り役。step() を0.5秒ごとに呼ぶ。
   // state：'wait'＝自分の車が動いている／止まったばかり（見張りを休む）、'watch'＝見張り中、'alarm'＝知らせている
   // th＝形の違いの目安、hold＝「離れていく」が何回続いたら鳴らすか、lag＝何秒前の映像と比べるか
-  // hold2＝縮み方がはっきりしなくても大きな変化がこの回数続いたら鳴らす、approach＝これより広がったら「自分が詰めている」
+  // approach＝これより広がったら「自分が詰めている」（鳴らさない）
   // settle＝止まってから見張りを始めるまでの秒数（ego＝まわりの変化は、画面に出すだけで判断には使わない）
-  function Watcher(opt){ this.o=Object.assign({th:0.25,hold:3,hold2:8,lag:8,approach:1.02,egoTh:7,settle:3},opt||{}); this.reset(); }
+  function Watcher(opt){ this.o=Object.assign({th:0.25,hold:4,lag:8,approach:1.02,egoTh:7,settle:3},opt||{}); this.reset(); }
   Watcher.prototype.reset=function(){ this.state='wait'; this.buf=[]; this.ref=null; this.cnt=0; this.cnt2=0; this.sh=[]; this.why=''; this.selfCnt=0; this.egoCnt=0; this.last=0; this.lastS=1; this.ego=0; this.prev=null; this.still=null; this.event=''; this.hist=[]; };
   Watcher.prototype.step=function(g,t,rel){ const box=[Math.floor(rel[0]*W),Math.floor(rel[1]*H),Math.ceil(rel[2]*W),Math.ceil(rel[3]*H)];
     this.event='';
@@ -57,11 +57,13 @@
     this.lastS=s; this.sh.push(s); if(this.sh.length>4) this.sh.shift();
     const dn=this.sh.filter(x=>x<0.995).length, up=this.sh.filter(x=>x>1.005).length;
     const receding=dn>=2&&up===0, approaching=up>=2&&dn===0;
-    if(d>this.o.th&&receding) this.cnt++; else if(d<=this.o.th) this.cnt=0;
-    if(d>this.o.th*2) this.cnt2++; else this.cnt2=0;   // 縮み方がはっきりしなくても、大きく変わった状態が長く続いたら知らせる（見落とさないため）
+    // 形の変化が続いたら知らせる。ただし前の車が「大きくなっている」（自分が前に詰めている）ときは知らせない
+    // （本物のドライブレコーダー映像で、ゆっくり動き出す車は「縮み方」がはっきり出にくく、縮んだときだけ鳴らすと遅れたため）
+    if(d>this.o.th&&!approaching) this.cnt++; else this.cnt=0;
+    if(d>this.o.th&&receding) this.cnt2++;
     if(d>this.o.th&&approaching) this.selfCnt++; else this.selfCnt=0;
     if(this.selfCnt>=2){ this.state='wait'; this.still=null; this.selfCnt=0; this.cnt=0; this.cnt2=0; this.event='self'; return this.out(); }   // 自分が前に詰めた：鳴らさずに休む
-    if(this.cnt>=this.o.hold||this.cnt2>=this.o.hold2){ this.state='alarm'; this.event='alarm'; this.why=this.cnt>=this.o.hold?'離れていく':'大きな変化'; }
+    if(this.cnt>=this.o.hold){ this.state='alarm'; this.event='alarm'; this.why=this.cnt2>0?'離れていく':'前が動いた'; }
     return this.out(); };
   Watcher.prototype.out=function(){ return {state:this.state,why:this.why,d:this.last,s:this.lastS,ego:this.ego,alarm:this.state==='alarm',event:this.event,ready:this.state==='watch'}; };
   // 手で音を止めたとき：止まったまま次の見張りに戻す（止まって3秒で自動的にまた見張る）

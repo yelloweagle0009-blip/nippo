@@ -46,7 +46,7 @@ select,input[type=range]{font:inherit;width:100%}
   <div class="card">
     <div class="st" id="st">カメラがまだついていません</div>
     <div class="lv"><i id="lvI"></i><b id="lvB"></b></div>
-    <p class="note">紫の棒が「前の車の形の変わり方」、赤い線が目安です。棒が赤い線を越え、しかも前の車が小さくなっていく（離れていく）と鳴ります。自分が前に詰めたとき（前の車が大きくなる）は鳴りません。鳴ったあと発進すると音は自動で止まり、止まって3秒たつと自動でまた見張ります。</p>
+    <p class="note">紫の棒が「前の車の形の変わり方」、赤い線が目安です。棒が赤い線を2秒続けて越えると鳴ります。自分が前に詰めたとき（前の車が大きくなる）は鳴りません。鳴ったあと発進すると音は自動で止まり、止まって3秒たつと自動でまた見張ります。</p>
   </div>
   <div class="card">
     <label>枠の大きさ<input type="range" id="sz" min="25" max="90" value="55"></label>
@@ -57,7 +57,7 @@ select,input[type=range]{font:inherit;width:100%}
   <p class="note">使い方の注意：画面はつけたまま、充電しながら使ってください（画面が消えると見張りが止まります）。真っ暗・強い雨・前のトラックとの間が空きすぎているときは見落とすことがあります。最初はタイマーなども一緒に使って、どのくらい頼れるか確かめてください。</p>
 </main>
 <div id="alarm"><h2>前が動きました！</h2><button id="stopBtn">止める</button></div>
-<script src="taiki.js?v=2"></script>
+<script src="taiki.js?v=3"></script>
 <script>
 const $=id=>document.getElementById(id), T=window.NippoTaiki;
 const v=$('v'), ov=$('ov'), work=document.createElement('canvas'); work.width=T.W; work.height=T.H; const wx=work.getContext('2d',{willReadFrequently:true});
@@ -86,14 +86,14 @@ function tick(){ if(!v.videoWidth) return; const vw=v.videoWidth, vh=v.videoHeig
   if(r.event==='drove'){ alarmOff(); $('st').textContent='発進したので音を止めました。止まると自動でまた見張ります'; return; }
   if(r.event==='self'){ $('st').textContent='前に詰めています。止まって3秒たつと見張ります'; return; }
   if(r.state==='wait') $('st').textContent='止まるのを待っています（止まって3秒たつと見張ります）';
-  else if(r.state==='watch') $('st').textContent=watcher.cnt>0||watcher.cnt2>0?'前に動きがあります…（離れていけば鳴ります）':'見張り中です（前は止まっています）'; }
+  else if(r.state==='watch') $('st').textContent=watcher.cnt>0?'前に動きがあります…（続けば鳴ります）':'見張り中です（前は止まっています）'; }
 // 音の出方の説明（アプリ：目覚ましと同じアラームの音量／Chrome：動画などと同じ音量）
 function soundNote(){ let t;
   if(NATIVE){ let vol=''; try{ vol=NippoAndroid.alarmVolume(); }catch(e){} const [a,b]=vol.split('/').map(Number);
     t=(a===0)?'アラームの音量が0になっています。スマホの音量ボタンで「アラーム」の音量を上げてください（目覚ましと同じ音量で鳴ります）。':'目覚ましと同じ「アラーム」の音と音量で鳴ります（動画の音量をミュートにしていても鳴ります）。'; }
   else t='Chrome で開いているので、動画などと同じ音量で鳴ります。動画の音量をミュートにしていると聞こえません。運行日報アプリ（Android版）で開くと、目覚ましと同じアラームの音量で鳴ります。';
   $('sn').textContent=t; }
-const MODES={early:{th:0.2,hold:2,hold2:6},std:{th:0.25,hold:3,hold2:8},late:{th:0.3,hold:5,hold2:12}};
+const MODES={early:{th:0.2,hold:3},std:{th:0.25,hold:4},late:{th:0.3,hold:6}};
 function alarmOff(){ beepStop(); $('alarm').classList.remove('on'); }
 $('goBtn').onclick=async()=>{
   if(timer){ clearInterval(timer); timer=null; $('goBtn').textContent='見張りを始める'; $('st').textContent='止めました'; keepOff(); return; }
