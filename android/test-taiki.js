@@ -6,9 +6,16 @@ const keep = setInterval(() => {}, 1000);
 setTimeout(() => { console.log('FAIL: 時間切れ（8分）'); process.exit(8); }, 8 * 60 * 1000).unref();
 process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった'); });
 (async () => {
-  const list = await (await fetch('http://127.0.0.1:9223/json')).json();
-  const pg = list.find(x => x.type === 'page' && x.url.includes('/nippo/taiki/'));
+  // 電波がつながっていないと、アプリは日本語の「電波がつながっていません」を出して5秒ごとに開き直すので、
+  // 待機アラームの画面が出るまで最大90秒待つ（recover の試験では、これが「自動で開き直せたか」の確かめになる）
+  let list = [], pg = null; const t0 = Date.now();
+  for (let k = 0; k < 90 && !pg; k++) {
+    try { list = await (await fetch('http://127.0.0.1:9223/json')).json(); } catch (e) { list = []; }
+    pg = list.find(x => x.type === 'page' && x.url.includes('/nippo/taiki/'));
+    if (!pg) await new Promise(r => setTimeout(r, 1000));
+  }
   if (!pg) { console.log('FAIL: 待機アラームの画面が開いていない', JSON.stringify(list.map(x => x.url))); process.exit(4); }
+  console.log('OPENED', ((Date.now() - t0) / 1000).toFixed(0) + '秒');
   console.log('URL', pg.url);
   const ws = new WebSocket(pg.webSocketDebuggerUrl); await new Promise((ok, ng) => { ws.on('open', ok); ws.on('error', ng); });
   let id = 0; const wait = {};
@@ -18,8 +25,8 @@ process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった
     if (d.error) throw new Error(JSON.stringify(d.error)); if (d.result.exceptionDetails) throw new Error(JSON.stringify(d.result.exceptionDetails)); return d.result.result.value; };
   // 画面の様子（うまくいかないときの手がかり）
   const diag = () => ev(() => JSON.stringify({ ready: document.readyState, title: document.title, url: location.href, scripts: [...document.scripts].map(x => x.src.split('/').pop()), taiki: !!window.NippoTaiki, cam: !!document.getElementById('camBtn'), body: (document.body && document.body.innerText || '').slice(0, 200), errs: window.__errs || [] })).catch(e => 'diag失敗 ' + e.message);
-  const until = async fn => {
-    for (let round = 0; round < 2; round++) {
+  const until = async (fn, noReload) => {
+    for (let round = 0; round < (noReload ? 1 : 2); round++) {
       for (let k = 0; k < 60; k++) { try { if (await ev(fn)) return; } catch (e) { if (k % 15 === 0) console.log('EVERR', e.message.slice(0, 200)); } await new Promise(r => setTimeout(r, 1000)); }
       console.log('WAIT', round, await diag());
       if (round === 0) { await send('Page.reload', {}); await new Promise(r => setTimeout(r, 6000)); }
@@ -27,6 +34,11 @@ process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった
     throw new Error('timeout'); };
   await ev(() => { window.__errs = window.__errs || []; window.addEventListener('error', e => window.__errs.push(String(e.message) + ' ' + (e.filename || '').split('/').pop())); return 1; }).catch(e => console.log('EVERR0', e.message));
   console.log('DIAG0', await diag());
+  if (process.argv[2] === 'recover') {   // 電波が無い所で初めて開いたあと、電波が戻ったら自動で開けたか
+    await until(() => !!(window.NippoTaiki && document.getElementById('camBtn')), true);   // 開き直しは試験側ではしない（アプリが自分で開き直せたかを見る）
+    console.log('RECOVER', JSON.stringify({ title: await ev(() => document.title) }));
+    console.log('PASS'); passed = true; process.exitCode = 0; clearInterval(keep); ws.close(); return;
+  }
   if (process.argv[2] === 'offline') {
     await send('Page.reload', { ignoreCache: false }); await new Promise(r => setTimeout(r, 8000));
     await until(() => !!(window.NippoTaiki && document.getElementById('camBtn')));

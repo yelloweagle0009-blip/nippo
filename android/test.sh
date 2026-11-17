@@ -64,6 +64,28 @@ else
   fi
   adb exec-out screencap -p > out/shot-taiki.png
   [ $RC -eq 0 ] && RC=$TRC
+  # 電波が無い所で初めて開いたとき：日本語で知らせ、電波が戻ったら自動で開けるか
+  if [ $RC -eq 0 ]; then
+    adb shell pm clear jp.nippo.taiki
+    adb shell cmd connectivity airplane-mode enable
+    adb shell svc wifi disable
+    adb shell svc data disable
+    sleep 5
+    adb shell am start -W -n jp.nippo.taiki/jp.nippo.unkou.MainActivity
+    sleep 12
+    adb exec-out screencap -p > out/shot-taiki-nonet.png
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml > out/ui-nonet.xml
+    if grep -q '電波がつながっていません' out/ui-nonet.xml; then echo "NONET 日本語の知らせが出た"; else echo "FAIL: 電波が無いときの日本語の知らせが出ない"; RC=12; fi
+    adb shell cmd connectivity airplane-mode disable
+    adb shell svc wifi enable
+    adb shell svc data enable
+    TPID=$(adb shell pidof jp.nippo.taiki | tr -d '\r')
+    adb forward tcp:9223 localabstract:webview_devtools_remote_$TPID
+    node android/test-taiki.js recover > out/test-taiki-recover.txt 2>&1; TRC=$?
+    cat out/test-taiki-recover.txt
+    grep -q '^PASS' out/test-taiki-recover.txt || TRC=9
+    [ $RC -eq 0 ] && RC=$TRC
+  fi
 fi
 adb logcat -d -t 400 > out/logcat.txt
 exit $RC
