@@ -16,7 +16,17 @@ process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった
   const send = (method, params) => new Promise(ok => { const i = ++id; wait[i] = ok; ws.send(JSON.stringify({ id: i, method, params: params || {} })); });
   const ev = async (fn, arg) => { const d = await send('Runtime.evaluate', { expression: '(' + fn.toString() + ')(' + JSON.stringify(arg === undefined ? null : arg) + ')', awaitPromise: true, returnByValue: true });
     if (d.error) throw new Error(JSON.stringify(d.error)); if (d.result.exceptionDetails) throw new Error(JSON.stringify(d.result.exceptionDetails)); return d.result.result.value; };
-  const until = async fn => { for (let k = 0; k < 90; k++) { try { if (await ev(fn)) return; } catch (e) { } await new Promise(r => setTimeout(r, 1000)); } throw new Error('timeout'); };
+  // 画面の様子（うまくいかないときの手がかり）
+  const diag = () => ev(() => JSON.stringify({ ready: document.readyState, title: document.title, url: location.href, scripts: [...document.scripts].map(x => x.src.split('/').pop()), taiki: !!window.NippoTaiki, cam: !!document.getElementById('camBtn'), body: (document.body && document.body.innerText || '').slice(0, 200), errs: window.__errs || [] })).catch(e => 'diag失敗 ' + e.message);
+  const until = async fn => {
+    for (let round = 0; round < 2; round++) {
+      for (let k = 0; k < 60; k++) { try { if (await ev(fn)) return; } catch (e) { if (k % 15 === 0) console.log('EVERR', e.message.slice(0, 200)); } await new Promise(r => setTimeout(r, 1000)); }
+      console.log('WAIT', round, await diag());
+      if (round === 0) { await send('Page.reload', {}); await new Promise(r => setTimeout(r, 6000)); }
+    }
+    throw new Error('timeout'); };
+  await ev(() => { window.__errs = window.__errs || []; window.addEventListener('error', e => window.__errs.push(String(e.message) + ' ' + (e.filename || '').split('/').pop())); return 1; }).catch(e => console.log('EVERR0', e.message));
+  console.log('DIAG0', await diag());
   if (process.argv[2] === 'offline') {
     await send('Page.reload', { ignoreCache: false }); await new Promise(r => setTimeout(r, 8000));
     await until(() => !!(window.NippoTaiki && document.getElementById('camBtn')));
