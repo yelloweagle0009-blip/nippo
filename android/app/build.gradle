@@ -1,14 +1,34 @@
 // 運行日報 Android版：GitHub Pages のアプリをそのまま表示し、文字を読む部品（/nippo/m/）はアプリの中に入れて持つ
+// 同じ作りで「待機アラーム」だけのアプリ（仲間に配る用）も作る。2つは別のアプリなので、同じスマホに両方入れられる
 plugins { id 'com.android.application' }
 android {
     namespace 'jp.nippo.unkou'
     compileSdk 34
     defaultConfig {
-        applicationId 'jp.nippo.unkou'
         minSdk 24
         targetSdk 34
         versionCode((System.getenv('NIPPO_VCODE') ?: '1') as int)
         versionName(System.getenv('NIPPO_VNAME') ?: '1.0')
+    }
+    buildFeatures { buildConfig true }
+    flavorDimensions 'app'
+    productFlavors {
+        // 運行日報（これまでのアプリ。アプリの名前・中身は変えない）
+        nippo {
+            dimension 'app'
+            applicationId 'jp.nippo.unkou'
+            resValue 'string', 'app_name', '運行日報'
+            buildConfigField 'String', 'HOME', '"https://yelloweagle0009-blip.github.io/nippo/"'
+            buildConfigField 'String', 'UA', '" NippoApp/1"'
+        }
+        // 待機アラームだけのアプリ（文字を読む部品は入れないので小さい）
+        taiki {
+            dimension 'app'
+            applicationId 'jp.nippo.taiki'
+            resValue 'string', 'app_name', '待機アラーム'
+            buildConfigField 'String', 'HOME', '"https://yelloweagle0009-blip.github.io/nippo/taiki/"'
+            buildConfigField 'String', 'UA', '" TaikiApp/1"'
+        }
     }
     // 署名の鍵：アプリを更新するとき、前と同じ鍵でないと上書きで入れられない（入れ直すとデータが消える）。
     // 鍵は GitHub の作業場所（キャッシュ）に1回だけ作って保管し、毎回同じものを使う（リポジトリには置かない）
