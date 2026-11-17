@@ -35,5 +35,35 @@ if [ $RC -eq 0 ]; then
   adb shell svc data enable
 fi
 adb exec-out screencap -p > out/shot2.png
+# ---- 待機アラームだけのアプリ（jp.nippo.taiki） ----
+adb install -r taiki-alarm.apk || exit 1
+adb shell pm grant jp.nippo.taiki android.permission.CAMERA
+adb shell am start -W -n jp.nippo.taiki/jp.nippo.unkou.MainActivity
+sleep 25
+TPID=$(adb shell pidof jp.nippo.taiki | tr -d '\r')
+if [ -z "$TPID" ]; then
+  echo "待機アラームのアプリが動いていない。落ちた理由："
+  adb logcat -d -t 2000 | grep -A 30 -E "FATAL EXCEPTION|AndroidRuntime" | head -80
+  RC=11
+else
+  adb forward tcp:9223 localabstract:webview_devtools_remote_$TPID
+  node android/test-taiki.js > out/test-taiki.txt 2>&1; TRC=$?
+  cat out/test-taiki.txt
+  grep -q '^PASS' out/test-taiki.txt || TRC=9
+  if [ $TRC -eq 0 ]; then
+    adb shell cmd connectivity airplane-mode enable
+    adb shell svc wifi disable
+    adb shell svc data disable
+    sleep 8
+    node android/test-taiki.js offline > out/test-taiki-offline.txt 2>&1; TRC=$?
+    cat out/test-taiki-offline.txt
+    grep -q '^PASS' out/test-taiki-offline.txt || TRC=9
+    adb shell cmd connectivity airplane-mode disable
+    adb shell svc wifi enable
+    adb shell svc data enable
+  fi
+  adb exec-out screencap -p > out/shot-taiki.png
+  [ $RC -eq 0 ] && RC=$TRC
+fi
 adb logcat -d -t 400 > out/logcat.txt
 exit $RC
