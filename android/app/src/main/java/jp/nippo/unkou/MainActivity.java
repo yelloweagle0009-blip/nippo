@@ -8,6 +8,7 @@ package jp.nippo.unkou;
 // ・入力した内容や覚えた場所はこのアプリの中に保存されるので、Chrome の閲覧履歴を消しても消えない
 // ・写真を撮る／選ぶ、読み取りの記録の書き出し（ダウンロードフォルダへ保存）に対応
 // ・待機アラーム（前のトラックが動いたら鳴らす）のカメラと、見張り中に画面を消さない仕組みに対応
+// ・同じ作りで「待機アラーム」だけのアプリも作る（開くページ・名前・アイコン・アプリの番号だけが違う。build.gradle の productFlavors）
 
 import android.app.Activity;
 import android.content.ContentValues;
@@ -56,7 +57,7 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
     static final String HOST = "yelloweagle0009-blip.github.io";
-    static final String HOME = "https://" + HOST + "/nippo/";
+    static final String HOME = BuildConfig.HOME;   // 運行日報は /nippo/、待機アラームだけのアプリは /nippo/taiki/
     static final int REQ_FILE = 1;
     static final int REQ_CAM = 2;
     static final int REQ_CAM_PHOTO = 3;
@@ -83,7 +84,7 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
-        s.setUserAgentString(s.getUserAgentString() + " NippoApp/1");
+        s.setUserAgentString(s.getUserAgentString() + BuildConfig.UA);
         s.setMediaPlaybackRequiresUserGesture(false);   // 待機アラームの音を鳴らせるように
 
         web.setWebViewClient(new WebViewClient() {
@@ -220,7 +221,7 @@ public class MainActivity extends Activity {
                 File[] old = dir.listFiles();
                 if (old != null) for (File f : old) f.delete();
                 File f = new File(dir, "photo_" + System.currentTimeMillis() + ".jpg");
-                camUri = FileProvider.getUriForFile(this, "jp.nippo.unkou.files", f);
+                camUri = FileProvider.getUriForFile(this, getPackageName() + ".files", f);
                 go = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
                 go.putExtra(MediaStore.EXTRA_OUTPUT, camUri);
                 go.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -318,6 +319,18 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            });
+        }
+
+        // 仲間に送る：LINE やメールなどを選んで、文を送る
+        @JavascriptInterface
+        public void share(String text) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, text);
+                try { startActivity(Intent.createChooser(i, "送る先を選ぶ")); }
+                catch (Exception e) { Toast.makeText(MainActivity.this, "送るアプリが見つかりませんでした", Toast.LENGTH_LONG).show(); }
             });
         }
 
