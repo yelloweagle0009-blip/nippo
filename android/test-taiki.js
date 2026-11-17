@@ -6,6 +6,22 @@ const keep = setInterval(() => {}, 1000);
 setTimeout(() => { console.log('FAIL: 時間切れ（8分）'); process.exit(8); }, 8 * 60 * 1000).unref();
 process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった'); });
 (async () => {
+  if (process.argv[2] === 'nonet') {   // 電波が無い所で初めて開いたとき：日本語の知らせが出ているか（アプリの中の画面の文字を読む）
+    let txt = '', urls = [];
+    for (let k = 0; k < 20; k++) {
+      try {
+        const l = await (await fetch('http://127.0.0.1:9223/json')).json(); urls = l.map(x => x.type + ' ' + x.url.slice(0, 60));
+        const g = l.find(x => x.type === 'page');
+        if (g) { const w = new WebSocket(g.webSocketDebuggerUrl); await new Promise((ok, ng) => { w.on('open', ok); w.on('error', ng); });
+          txt = await new Promise(ok => { w.on('message', m => { const d = JSON.parse(m); if (d.id === 1) ok(d.result && d.result.result && d.result.result.value || ''); }); w.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression: 'document.body?document.body.innerText:""', returnByValue: true } })); });
+          w.close(); if (/電波がつながっていません/.test(txt)) break; }
+      } catch (e) { }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    console.log('NONET', JSON.stringify({ text: txt.slice(0, 80), targets: urls }));
+    if (/電波がつながっていません/.test(txt)) { console.log('PASS'); passed = true; process.exitCode = 0; } else console.log('FAIL: 日本語の知らせが出ていない');
+    clearInterval(keep); return;
+  }
   // 電波がつながっていないと、アプリは日本語の「電波がつながっていません」を出して5秒ごとに開き直すので、
   // 待機アラームの画面が出るまで最大90秒待つ（recover の試験では、これが「自動で開き直せたか」の確かめになる）
   let list = [], pg = null; const t0 = Date.now();

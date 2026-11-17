@@ -74,8 +74,11 @@ else
     adb shell am start -W -n jp.nippo.taiki/jp.nippo.unkou.MainActivity
     sleep 12
     adb exec-out screencap -p > out/shot-taiki-nonet.png
-    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml > out/ui-nonet.xml
-    if grep -q '電波がつながっていません' out/ui-nonet.xml; then echo "NONET 日本語の知らせが出た"; else echo "FAIL: 電波が無いときの日本語の知らせが出ない"; RC=12; fi
+    TPID=$(adb shell pidof jp.nippo.taiki | tr -d '\r')
+    adb forward tcp:9223 localabstract:webview_devtools_remote_$TPID
+    node android/test-taiki.js nonet > out/test-taiki-nonet.txt 2>&1
+    cat out/test-taiki-nonet.txt
+    grep -q '^PASS' out/test-taiki-nonet.txt || RC=12
     adb shell cmd connectivity airplane-mode disable
     adb shell svc wifi enable
     adb shell svc data enable
