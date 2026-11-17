@@ -4,7 +4,10 @@
 (function(){
 'use strict';
 const RATIO=105/43.6;      // 時刻欄（行番号の右〜時間欄の右）の幅 ÷ 1行の高さ
-const WORK=1477;           // 処理に使う長い辺の長さ
+const WORK=1477;
+const TSUMI=0.018;         // 積荷の欄に字がある目安（cargoInk の値）
+const OROSHI=0.03, OROSHI2=0.04;   // 卸荷の欄に字がある目安と、「降ろすだけ」と決めるときの、より確かな目安
+// （2026-11-17 に数え方を変えた。実際の日報で、空の欄は0.003以下、字のある欄は0.071以上）           // 処理に使う長い辺の長さ
 
 function grayOf(c){ const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data, g=new Uint8Array(c.width*c.height);
   for(let i=0,j=0;j<g.length;i+=4,j++) g[j]=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000|0; return g; }
@@ -136,6 +139,13 @@ function fixWindow(L){ let moved=0;
     if(contRight(L,15)>0.6&&contRight(L,0)<0.6){ const q=L.seps[0], p=L.seps[1]; L.seps=[[2*q[0]-p[0],2*q[1]-p[1],q[2]-d0]].concat(L.seps.slice(0,15)); moved--; continue; }
     break; }
   return moved; }
+// 行の境の線（区切り線から半行下）を右へたどり、右へ1画素進むごとの上下のずれを、全部の行の真ん中の値で返す（たどれなければ0）
+function cargoSlope(L,rows){ const {w,h,hl}=L, sl=[];
+  rows.forEach(r=>{ const xa=X(r,226), xb=X(r,540); if(xa<0||xb>=w) return; let y=r.y+r.d/2, hit=0, n=0;
+    for(let x=xa;x<=xb;x+=4){ n++; let best=null; for(let dy=-3;dy<=3;dy++){ const yy=Math.round(y+dy); if(yy<0||yy>=h) continue; if(hl[yy*w+Math.round(x)]&&(best===null||Math.abs(dy)<Math.abs(best))) best=dy; }
+      if(best!==null){ y+=best; hit++; } }
+    if(n&&hit/n>=0.7) sl.push((y-(r.y+r.d/2))/(xb-xa)); });
+  return sl.length>=4?median(sl):0; }
 function rowsOf(L){
   return L.seps.map(([x0,x1,y],i)=>{ const nb=[i-1,i+1].filter(j=>j>=0&&j<16).map(j=>Math.abs(L.seps[j][2]-y)); const d=nb.reduce((a,b)=>a+b,0)/nb.length; const w=RATIO*d; return {y,d,x1,X0:x1-w,w}; });
 }
@@ -144,8 +154,8 @@ function frac(L,x0,x1,y0,y1){ const {w,h,b,lines}=L; x0=Math.max(0,Math.floor(x0
   if(x1<=x0||y1<=y0) return -1; let n=0; for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++) if(b[y*w+x]&&!lines[y*w+x]) n++; return n/((x1-x0)*(y1-y0)); }
 // 線で消した字を見つける：欄の中を横に走る線のうち、欄の幅いっぱいの印刷の線ではなく、字の上を通る短めの線を「消し線」とみなし、
 // その線が通っている字のかたまりを「消した字」として数えない
-function strikeSegs(L,x0,x1,y0,y1,m,W,H){ // m：欄の中の字だけ（印刷の線を除いたもの）
-  const out=[]; const need=Math.max(10,W*0.45), gap=2;
+function strikeSegs(L,x0,x1,y0,y1,m,W,H,needW){ // m：欄の中の字だけ（印刷の線を除いたもの）。needW：消し線とみなす長さの基準の幅（省くと W）
+  const out=[]; const need=Math.max(10,(needW||W)*0.45), gap=2;
   for(let y=1;y<H-1;y++){ let st=-1,last=-99,len=0;
     const end=()=>{ if(len>=need){ // 線の上と下の両方に字があれば、字の上を通る消し線
         let up=0,dn=0; const ry=Math.max(2,Math.round(H*0.12)); for(let x=st;x<=last;x++){ for(let k=2;k<=ry;k++){ if(y-k>=0&&m[(y-k)*W+x]) up++; if(y+k<H&&m[(y+k)*W+x]) dn++; } }
@@ -161,6 +171,27 @@ function liveInk(L,x0,x1,y0,y1){ // 消し線が通っていない字の濃さ�
   const {comps}=label(m,W,H), S=strikeSegs(L,x0,x1,y0,y1,m,W,H); let n=0, struck=false;
   for(const c of comps){ if(c.n<4) continue; const hit=S.some(([a,e,y])=>y>=c.y0&&y<=c.y1&&a<=c.x1&&e>=c.x0); if(hit){ struck=true; continue; } n+=c.n; }
   return {v:n/(W*H),struck}; }
+// 卸荷・積荷の欄の字の濃さ：行の外まではみ出して書いた字（「3台」が上の線にかかっている など）も、字のかたまりの真ん中が
+// この行の中にあれば、かたまりごと数える（はみ出した部分が切れて薄くなり、見落とすのを防ぐ）。消し線が通っている字は数えない
+function cargoInk(L,xa,xb,yc,hb){ const {w,h,b,lines}=L, cw=xb-xa;
+  // 字は欄の右の線を越えて書かれることもあるので、欄より少し広く見て、かたまりの真ん中が欄の中にあるものを数える
+  const x0=Math.max(0,Math.floor(xa-cw*0.15)), x1=Math.min(w,Math.ceil(xb+cw*0.3));
+  const y0=Math.max(0,Math.floor(yc-hb*1.6)), y1=Math.min(h,Math.ceil(yc+hb*1.6)); const W=x1-x0,H=y1-y0; if(W<4||H<4) return {v:0,struck:false};
+  const m=new Uint8Array(W*H); for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(y+y0)*w+x+x0; m[y*W+x]=(b[i]&&!lines[i])?255:0; }
+  const {comps}=label(m,W,H), S=strikeSegs(L,x0,x1,y0,y1,m,W,H,cw); let n=0, struck=false;   // 消し線の長さは、これまでどおり欄の幅で決める
+  for(const c of comps){ if(c.n<4) continue; const cx=c.cx+x0, cy=c.cy+y0; if(cy<yc-hb||cy>=yc+hb||cx<xa||cx>=xb) continue;
+    // 欄の端にある細いかたまり（点線で印刷された縦の線のかけら）は字ではない
+    // （斜めの写真では線が斜めになって少し幅が出るので、欄の端から7％以内にある幅12％以下のかたまりも外す）
+    if(c.x1-c.x0+1<=Math.max(3,cw*0.06)&&(cx<xa+cw*0.12||cx>xb-cw*0.12)) continue;
+    if(c.x1-c.x0+1<=cw*0.12&&c.y1-c.y0+1>=hb*0.5&&(cx<xa+cw*0.07||cx>xb-cw*0.07)) continue;
+    // 横の線のかけら（線の端や切れ目が線として消し切れずに残った、平たく細いかたまり）も字ではない
+    // 欄の左右の端にある小さな点（線の角や交わる所のかけら）も字ではない。どちらも線のすぐそば（2画素以内）にあるときだけ外す
+    const ch=c.y1-c.y0+1, flat=ch<=Math.max(3,hb*0.15)&&c.x1-c.x0+1>=2*ch, dot=c.n<hb*hb*0.12&&(cx<xa+cw*0.15||cx>xb-cw*0.15);
+    if(flat||dot){ let near=false;
+      for(let y=Math.max(0,c.y0+y0-2);y<=Math.min(h-1,c.y1+y0+2)&&!near;y++) for(let x=Math.max(0,c.x0+x0-2);x<=Math.min(w-1,c.x1+x0+2);x++) if(lines[y*w+x]){ near=true; break; }
+      if(near) continue; }
+    if(S.some(([a,e,y])=>y>=c.y0&&y<=c.y1&&a<=c.x1&&e>=c.x0)){ struck=true; continue; } n+=c.n; }
+  return {v:n/(cw*hb*1.8),struck}; }
 // 線の画素を白くした灰色の画像から、範囲の中の字のまわりだけを切り抜く（数字読み取り用）
 function tightCrop(L,x0,x1,y0,y1,yc,yr,mode){
   const {w,h,b,lines,g}=L; x0=Math.max(0,Math.floor(x0)); x1=Math.min(w,Math.ceil(x1)); y0=Math.max(0,Math.floor(y0)); y1=Math.min(h,Math.ceil(y1));
@@ -224,11 +255,15 @@ async function analyze(file,opt){
   const hiR=Math.abs(L.ang)>0.05?rotCanvas(L.hi,-L.ang):L.hi; const k=hiR.width/L.w;
   if(L.hi!==hiBase) free(hiBase); if(hiR!==L.hi) free(L.hi); L.hi=null;
   const rows=rowsOf(L);
+  // 卸荷・積荷の欄は時刻欄から右へ遠いので、傾きがわずかに残っていると、上下に半行ほどずれる（2026-11-17：斜めの写真で「積荷 3台」を見落とした）。
+  // 行の境の線を、時刻欄の右から積荷欄の右まで少しずつ右へたどって、右へ進むほど線が上下にどれだけずれるか（傾き）を測る
+  const cs=cargoSlope(L,rows);
   const times=[], tsumi=[], oroshi=[], struckCargo=[];
   rows.forEach(r=>{ const hb=r.d/2;
     [[r.y-hb,r.y],[r.y,r.y+hb]].forEach(([a,b])=>times.push(frac(L,X(r,152),X(r,226),a+hb*0.14,b-hb*0.14)));
     // 積荷・卸荷の欄は、線で消した字を数えない
-    const ts=liveInk(L,X(r,484),X(r,534),r.y-hb*0.9,r.y+hb*0.9), os=liveInk(L,X(r,426),X(r,478),r.y-hb*0.9,r.y+hb*0.9);
+    const oy=ref=>cs*(X(r,ref)-X(r,226));   // その欄での上下のずれ
+    const ts=cargoInk(L,X(r,484),X(r,534),r.y+oy(509),hb), os=cargoInk(L,X(r,426),X(r,478),r.y+oy(452),hb);
     tsumi.push(ts.v); oroshi.push(os.v); struckCargo.push((ts.struck?'積':'')+(os.struck?'卸':'')); });
   const written=[]; times.forEach((v,j)=>{ if(v>0.06) written.push(j); });
   if(!written.length){ free(hiR); return {ok:false,empty:true}; }
@@ -242,11 +277,12 @@ async function analyze(file,opt){
     const placeA=rectCrop(hiR,k,X(r,236),r.y-r.d*0.55,X(r,404),r.y+r.d*0.55);  // 店名欄（行の着・発をまたいで書かれる）
     const meterC=tightCrop(L,X(r,-60),X(r,62),r.y-r.d*0.75,r.y+r.d*0.75,r.y,hb,'meter');
     // 実車：この行で積んだ、または次の行で降ろす（荷を載せたまま途中の店に寄った区間も実車になる）
-    const ld=tsumi[pr-1]>0.035, nextUn=(oroshi[pr]||0)>0.05;
+    // 積荷の目安 TSUMI：0.018（2026-11-17 に数え方を変え、空の欄は0.011以下、いちばん薄い「3台」でも0.025になったため）
+    const ld=tsumi[pr-1]>TSUMI, nextUn=(oroshi[pr]||0)>OROSHI;
     // 1日の最初の区間（車庫を出る）はふだん空車。ただし次の行が「はっきり降ろすだけ（積んでいない）」なら、
     // 出るときから荷を積んでいた（乗り換えたトラックの荷など）として実車にする
-    const first=pr===2, nextOnlyUn=(oroshi[pr]||0)>0.07&&!((tsumi[pr]||0)>0.035);
-    out.push({paperRow:pr, loaded:first?(ld||nextOnlyUn):(ld||nextUn), cargoIn:ld, cargoOut:oroshi[pr-1]>0.05, cargoOutOnly:oroshi[pr-1]>0.07&&!ld, struck:struckCargo[pr-1], hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
+    const first=pr===2, nextOnlyUn=(oroshi[pr]||0)>OROSHI2&&!((tsumi[pr]||0)>TSUMI);
+    out.push({paperRow:pr, loaded:first?(ld||nextOnlyUn):(ld||nextUn), cargoIn:ld, cargoOut:oroshi[pr-1]>OROSHI, cargoOutOnly:oroshi[pr-1]>OROSHI2&&!ld, struck:struckCargo[pr-1], hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
       img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
@@ -260,7 +296,7 @@ async function analyze(file,opt){
   let head=null; const hb=(a,b)=>{ const y0=r1.y+a*r1.d, y1=r1.y+b*r1.d, x0=HX(620,(y0+y1)/2), x1=HX(765,(y0+y1)/2); return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
-  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),struck:struckCargo,times:times.map(v=>+v.toFixed(3))}};
+  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),cs:+cs.toFixed(4),struck:struckCargo,times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();
