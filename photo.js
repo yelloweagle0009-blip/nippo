@@ -8,14 +8,15 @@ const WORK=1477;           // 処理に使う長い辺の長さ
 
 function grayOf(c){ const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data, g=new Uint8Array(c.width*c.height);
   for(let i=0,j=0;j<g.length;i+=4,j++) g[j]=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000|0; return g; }
-function adaptiveInv(g,w,h,block,C){
+// rel：影で暗い所は紙と線の明るさの差も小さくなるので、差の目安をまわりの明るさに比例させる（明るさ170で15）
+function adaptiveInv(g,w,h,block,C,rel){
   const I=new Float64Array((w+1)*(h+1));
   for(let y=0;y<h;y++){ let s=0; for(let x=0;x<w;x++){ s+=g[y*w+x]; I[(y+1)*(w+1)+x+1]=I[y*(w+1)+x+1]+s; } }
   const r=block>>1, out=new Uint8Array(w*h);
   for(let y=0;y<h;y++){ const y0=Math.max(0,y-r), y1=Math.min(h-1,y+r);
     for(let x=0;x<w;x++){ const x0=Math.max(0,x-r), x1=Math.min(w-1,x+r);
       const s=I[(y1+1)*(w+1)+x1+1]-I[y0*(w+1)+x1+1]-I[(y1+1)*(w+1)+x0]+I[y0*(w+1)+x0];
-      out[y*w+x]=g[y*w+x]<=s/((y1-y0+1)*(x1-x0+1))-C?255:0; } }
+      const m=s/((y1-y0+1)*(x1-x0+1)); out[y*w+x]=g[y*w+x]<=m-(rel?Math.max(5,C*m/170):C)?255:0; } }
   return out;
 }
 function erodeH(b,w,h,k){ const o=new Uint8Array(w*h), a=k>>1, P=new Int32Array(w+1); for(let y=0;y<h;y++){ const row=y*w; for(let x=0;x<w;x++) P[x+1]=P[x]+(b[row+x]?1:0);
@@ -78,12 +79,12 @@ function scaled(src,long){ const k=Math.min(1,long/Math.max(src.width,src.height
   c.width=Math.round(src.width*k); c.height=Math.round(src.height*k); c.getContext('2d').drawImage(src,0,0,c.width,c.height); return c; }
 
 // 1つの向きで、時刻欄の区切り線16本を探す
-function locate(work){
+function locate(work,rel){
   const w=work.width,h=work.height,k=Math.max(15,Math.floor(w/40));
-  let g=grayOf(work), b=adaptiveInv(g,w,h,31,15), hl=openH(b,w,h,k);
+  let g=grayOf(work), b=adaptiveInv(g,w,h,31,15,rel), hl=openH(b,w,h,k);
   const ang=skewAngle(hl,w,h);
   let cv=work;
-  if(Math.abs(ang)>0.05){ cv=rotCanvas(work,-ang); g=grayOf(cv); b=adaptiveInv(g,w,h,31,15); hl=openH(b,w,h,k); }
+  if(Math.abs(ang)>0.05){ cv=rotCanvas(work,-ang); g=grayOf(cv); b=adaptiveInv(g,w,h,31,15,rel); hl=openH(b,w,h,k); }
   const S=segments(hl,w,h), p=pickSeps(S,w,h); if(!p) return null;
   let grp=p.grp.slice().sort((a,b)=>a[2]-b[2]); const d=p.d;
   // 右端がほかの線と一直線に並ばない線（表の上の枠など、たまたま長さが似た線）を外す
@@ -98,11 +99,18 @@ function locate(work){
   const isSep=(y,x0,x1)=>{ const ww=x1-x0, yi=Math.round(y); if(yi<4||yi>=h-4) return false;
     const colAny=(xa,xb)=>{ xa=Math.max(0,Math.floor(xa)); xb=Math.min(w,Math.floor(xb)); if(xb<=xa) return 0; let n=0; for(let x=xa;x<xb;x++){ for(let yy=yi-4;yy<=yi+4;yy++) if(hl[yy*w+x]){ n++; break; } } return n/(xb-xa); };
     const inside=colAny(x0+0.15*ww,x1-0.1*ww), out=(x1+0.2*ww<w)?colAny(x1+0.15*ww,Math.min(w,x1+0.6*ww)):0;
-    return inside>=0.5&&out<0.3; };
+    return inside>=0.5&&out<0.3?inside:0; };
+  // 予想した高さの上下（1行の高さの2割まで）で、本当の線がある高さを探す。
+  // 斜めから撮ると、下の行ほど間隔が広がる（または狭まる）ので、予想の高さぴったりには線が無いことがある（2026-11-17 の日報で、16本目が見つからなかった）
+  const findSep=q=>{ const r=Math.max(4,Math.round(d*0.2)); let best=null;
+    for(let dy=-r;dy<=r;dy+=2){ const v=isSep(q[2]+dy,q[0],q[1]); if(v&&(!best||v>best.v+0.02||(Math.abs(v-best.v)<=0.02&&Math.abs(dy)<Math.abs(best.dy)))) best={v,dy}; }
+    return best?[q[0],q[1],q[2]+best.dy]:null; };
   while(seps.length<16){
     const f0=seps[0],f1=seps[1],l0=seps[seps.length-1],l1=seps[seps.length-2];
     const q=[2*l0[0]-l1[0],2*l0[1]-l1[1],l0[2]+(l0[2]-l1[2])], p2=[2*f0[0]-f1[0],2*f0[1]-f1[1],f0[2]-(f1[2]-f0[2])];
-    if(isSep(q[2],q[0],q[1])) seps.push(q); else if(isSep(p2[2],p2[0],p2[1])) seps.unshift(p2); else break; }
+    const qa=findSep(q); if(qa){ seps.push(qa); continue; }
+    const pa=findSep(p2); if(pa){ seps.unshift(pa); continue; }
+    break; }
   if(seps.length!==16) return {fail:true,found:seps.length};
   // 16本が上から順に、ほぼ同じ間隔で並んでいるか確かめる（崩れていたら、この向きでは見つからなかったことにする）
   for(let i=1;i<16;i++){ const g=seps[i][2]-seps[i-1][2]; if(!(g>d*0.6&&g<d*1.5)) return {fail:true,found:16,bad:'spacing'}; }
@@ -193,15 +201,18 @@ async function analyze(file,opt){
   if(img.close) img.close(); img=null;
   // 向きを探す：区切り線16本が見つかり、しかも上下が正しい向きを使う。
   // 上下が逆さでも区切り線は見つかってしまうので、印刷された「着・発」の字が時刻欄の左側にあるかで確かめる
-  let L=null, rot=0, alt=null; const tried=new Set(), order=[0,90,270,180];
+  let L=null, rot=0, alt=null;
+  // 1回目はふつうの白黒。見つからなければ2回目は影に強い白黒で、もう一度4つの向きを試す（2026-11-17：用紙の下半分が影で暗い写真で線を見失った）。
+  // それでも見つからなければ、写真を左右に5度ずつ傾け直して試す（大きく斜めに撮ると、横線が途切れて傾きを測れないため）
+  for(const [rel,tilt] of [[false,0],[true,0],[true,-5],[true,5]]){ if(L||alt) break; const tried=new Set(), order=[0,90,270,180];
   while(order.length){ const r=order.shift(); if(tried.has(r)) continue; tried.add(r);
-    const hi=r?rotCanvas(hiBase,r):hiBase; const work=scaled(hi,WORK); const t=locate(work); if(t&&t.cv){ if(t.cv!==work) free(t.cv); t.cv=null; } free(work);
+    const base=r?rotCanvas(hiBase,r):hiBase; const hi=tilt?rotCanvas(base,tilt):base; if(base!==hi&&base!==hiBase) free(base); const work=scaled(hi,WORK); const t=locate(work,rel); if(t&&t.cv){ if(t.cv!==work) free(t.cv); t.cv=null; } free(work);
     if(t&&!t.fail&&opt.failUpright&&upright(t)>0.05){ if(hi!==hiBase) free(hi); continue; }   // 試験用：正しい向きで線が見つからない写真のまね
     if(t&&!t.fail){ t.up=upright(t);
       if(t.up>0.05){ L=t; L.hi=hi; rot=r; break; }
       if(!alt||t.up>alt.t.up){ if(alt&&alt.hi!==hiBase) free(alt.hi); alt={t,hi,r}; } else if(hi!==hiBase) free(hi);
       order.unshift((r+180)%360); continue; }   // 逆さなら、次は180度回した向きを試す
-    if(hi!==hiBase) free(hi); }
+    if(hi!==hiBase) free(hi); } }
   if(!L&&alt){
     if(alt.t.up<-0.05){ // 逆さの向きでしか線が見つからなかった：見つけた線ごと180度回して、正しい向きで使う
       L=flipL(alt.t); L.hi=rotCanvas(alt.hi,180); if(alt.hi!==hiBase) free(alt.hi); rot=(alt.r+180)%360; L.up=upright(L); L.flipped=true;
@@ -240,10 +251,13 @@ async function analyze(file,opt){
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
   const r1=rows[0]; let header=null;
-  const hx0=X(r1,525), hx1=X(r1,790), hy0=r1.y-4.9*r1.d, hy1=r1.y-2.0*r1.d;
+  // 斜めから撮ると表の縦の線が傾くので、1行目より上にある欄は、傾きの分だけ横にずらして切り抜く
+  // （2026-11-17 の日報で、始業メーターの最後の字が切り抜きの外に出て読めなかった）
+  const sl=(L.seps[15][1]-L.seps[0][1])/((L.seps[15][2]-L.seps[0][2])||1), HX=(ref,y)=>X(r1,ref)+sl*(y-r1.y);
+  const hy0=r1.y-4.9*r1.d, hy1=r1.y-2.0*r1.d, hx0=HX(525,(hy0+hy1)/2), hx1=HX(790,(hy0+hy1)/2);
   if(hx0>=0&&hy0>=0&&hx1<=L.w&&hy1<=L.h) header=rectCrop(hiR,k,hx0,hy0,hx1,hy1).toDataURL('image/jpeg',0.82);
   // 始業・終業メーターと走行粁の数字の部分（数字の読み取り用）。写っていなければ出さない
-  let head=null; const hb=(a,b)=>{ const x0=X(r1,620), x1=X(r1,765), y0=r1.y+a*r1.d, y1=r1.y+b*r1.d; return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
+  let head=null; const hb=(a,b)=>{ const y0=r1.y+a*r1.d, y1=r1.y+b*r1.d, x0=HX(620,(y0+y1)/2), x1=HX(765,(y0+y1)/2); return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
   return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),struck:struckCargo,times:times.map(v=>+v.toFixed(3))}};

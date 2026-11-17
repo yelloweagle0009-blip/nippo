@@ -156,7 +156,7 @@ input:not([type=checkbox]):focus{border-color:var(--accent);box-shadow:0 0 0 3px
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
   <p style="margin:14px 0 4px"><a class="btn" href="taiki.html" style="display:inline-block;text-decoration:none">荷待ちの「待機アラーム」を開く</a></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 31</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 32</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
@@ -454,8 +454,8 @@ async function readDigits(prow,head){
     let hn='';
     if(head&&(!digits(D.start)||!digits(D.end))){ const h=await window.NippoOCR.readHead(head,prog);
       if(D.rows!==rowsAt){ $('busy').textContent=''; return; }
-      if(h&&h.start){ D.autoHead=D.autoHead||{}; if(!digits(D.start)){ D.start=h.start.v; D.autoHead.start=h.start.tier==='blue'?1:2; } if(!digits(D.end)){ D.end=h.end.v; D.autoHead.end=h.end.tier==='blue'?1:2; }
-        hn=h.checked?'始業・終業メーターは走行粁と合いました（青）。':'始業・終業メーターは走行粁で確かめられなかったので黄色です。'; save(); render(); } }
+      if(h&&(h.start||h.end)){ D.autoHead=D.autoHead||{}; if(h.start&&!digits(D.start)){ D.start=h.start.v; D.autoHead.start=h.start.tier==='blue'?1:2; } if(h.end&&!digits(D.end)){ D.end=h.end.v; D.autoHead.end=h.end.tier==='blue'?1:2; }
+        hn=h.checked?'始業・終業メーターは走行粁と合いました（青）。':(h.start&&h.end)?'始業・終業メーターは走行粁で確かめられなかったので黄色です。':`${h.start?'終業':'始業'}メーターは、はっきり読めなかったので空けました。写真を見て打ってください。`; save(); render(); } }
     const {res}=await window.NippoOCR.readRows(prow,{start:D.start,end:D.end},p=>{
       $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:`数字を読み取っています… ${Math.round(p.done/p.total*100)}%`; });
     if(D.rows!==rowsAt){ $('busy').textContent=''; return; }
@@ -501,8 +501,8 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=29"></script>
-<script src="ocr.js?v=29"></script>
+<script src="photo.js?v=30"></script>
+<script src="ocr.js?v=30"></script>
 
 </body>
 </html>

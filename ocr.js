@@ -223,6 +223,14 @@ async function readHead(head,onProg){
   for(const [sv,ss] of S) for(const [ev,es] of En){ const diff=+ev-+sv; if(!(diff>0&&diff<1000)) continue;
     const tm=T.find(([tv])=>+tv===diff); const sc=ss+es+(tm?tm[1]+20:0);
     if(!best||sc>best.sc) best={sc,start:sv,end:ev,checked:!!tm}; }
+  // 走行粁で確かめられなかったとき：票がはっきり多い読み（5票以上で、2番目の3倍以上）を捨ててまで組み合わせを作らない。
+  // （2026-11-17 の日報：始業の最後の「7」が「km」の字に重なって6けたでしか読めず、終業を正しい「1311278」（15票）ではなく、
+  //   差が1000未満になる「131278」（1票）にしてしまった。この場合は、はっきりした方だけ黄色で入れ、もう片方は空けて打ってもらう）
+  const strong=V=>V.length&&V[0][1]>=5&&(!V[1]||V[0][1]>=3*V[1][1])?V[0][0]:null, sS=strong(S), sE=strong(En);
+  if(!(best&&best.checked)&&((sS&&(!best||best.start!==sS))||(sE&&(!best||best.end!==sE)))){
+    const ok=sS&&sE&&+sE-+sS>0&&+sE-+sS<1000;
+    const useS=sS&&(!sE||ok);   // 両方はっきりしていても、差がおかしければ始業は空ける
+    return {start:useS?{v:sS,tier:'yellow'}:null,end:sE?{v:sE,tier:'yellow'}:null,total:ok?+sE-+sS:null,checked:false,S,En,T}; }
   if(!best) return {S,En,T};
   const tier=best.checked?'blue':'yellow';
   return {start:{v:best.start,tier},end:{v:best.end,tier},total:best.end-best.start,checked:best.checked,S,En,T};
