@@ -35,6 +35,7 @@ import android.webkit.ServiceWorkerClient;
 import android.webkit.ServiceWorkerController;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -65,6 +66,13 @@ public class MainActivity extends Activity {
     PermissionRequest camReq;   // 待機アラームのカメラの許可待ち
     Ringtone ring;               // 待機アラームの音（目覚ましと同じ「アラーム」の音量・音で鳴らす）
     final Handler loop = new Handler(Looper.getMainLooper());
+    final Handler retry = new Handler(Looper.getMainLooper());   // 電波が無くて開けなかったときの開き直し
+    String failed;   // 開けなかったページ（開けたら null）
+    boolean errored;  // いま開いているページでエラーがあったか
+    static final String OFFLINE_PAGE = "<!doctype html><html lang=ja><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            + "<style>body{margin:0;font-family:sans-serif;background:#f5f2fa;color:#221a33;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box}"
+            + "h1{font-size:22px;color:#3f1868}p{font-size:16px;line-height:1.6}</style></head><body><div><h1>電波がつながっていません</h1>"
+            + "<p>最初の1回だけは、電波のある所で開く必要があります。<br>電波がつながると、自動で開きます（5秒ごとに試しています）。</p></div></body></html>";
 
     WebView web;
     ValueCallback<Uri[]> pending;
@@ -91,6 +99,30 @@ public class MainActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 return part(r.getUrl());
+            }
+
+            // 電波が無くて最初の画面を開けないとき：英語のエラー画面ではなく、日本語で知らせて、5秒ごとに自動で開き直す
+            // （一度開ければ、ページはスマホに保存されるので、次からは電波が無くても開ける）
+            @Override
+            public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
+                if (r == null || !r.isForMainFrame()) return;
+                String url = r.getUrl() != null ? r.getUrl().toString() : HOME;
+                if (!url.startsWith("https://")) return;
+                failed = url; errored = true;
+                v.loadDataWithBaseURL(null, OFFLINE_PAGE, "text/html", "utf-8", null);
+                retry.removeCallbacksAndMessages(null);
+                retry.postDelayed(() -> { if (failed != null) web.loadUrl(failed); }, 5000);
+            }
+
+            @Override
+            public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
+                if (url != null && url.startsWith("https://")) errored = false;   // 新しく開き始めた（エラーの印を消す）
+            }
+
+            @Override
+            public void onPageFinished(WebView v, String url) {
+                // 開けたときだけ開き直しを止める（開けなかったときも onPageFinished は呼ばれるので、エラーの印で見分ける）
+                if (url != null && url.startsWith("https://") && !errored) { failed = null; retry.removeCallbacksAndMessages(null); }
             }
 
             @Override
@@ -381,6 +413,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        retry.removeCallbacksAndMessages(null);
         stopAlarm();
         super.onDestroy();
     }
