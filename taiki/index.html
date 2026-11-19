@@ -49,14 +49,21 @@ select,input[type=range]{font:inherit;width:100%}
   <div class="card">
     <div class="st" id="st">カメラがまだついていません</div>
     <div class="lv"><i id="lvI"></i><b id="lvB"></b></div>
-    <p class="note">紫の棒が「前の車の形の変わり方」、赤い線が目安です。棒が赤い線を2秒続けて越えると鳴ります。自分が前に詰めたとき（前の車が大きくなる）は鳴りません。鳴ったあと発進すると音は自動で止まり、止まって3秒たつと自動でまた見張ります。</p>
+    <p class="note">紫の棒が「前の車の形の変わり方」、赤い線が目安です。棒が赤い線を2秒続けて越えると鳴ります（「標準」のとき）。人やフォークリフトが横切る・立ち止まる、影がかかるなど、枠の一部だけが変わったときは鳴りません。自分が前に詰めたとき（前の車が大きくなる）は鳴りません。鳴ったあと発進すると音は自動で止まり、止まって3秒たつと自動でまた見張ります。</p>
   </div>
   <div class="card">
     <label>枠の大きさ<input type="range" id="sz" min="25" max="90" value="55"></label>
     <label>知らせるタイミング
-      <select id="sens"><option value="early">早め（動き出したらすぐ）</option><option value="std" selected>標準</option><option value="late">遅め（間違って鳴りにくい）</option></select></label>
+      <select id="sens"><option value="early">早め（動き出したらすぐ）</option><option value="std" selected>標準</option><option value="late">遅め（間違って鳴りにくい）</option><option value="vlate">とても遅め（はっきり離れてから）</option></select></label>
+    <p class="note" style="margin:6px 0 0">選んだタイミングは覚えておきます。</p>
   </div>
   <p class="note" id="sn" style="font-weight:700"></p>
+  <div class="card" id="recCard" hidden>
+    <div class="st" style="font-size:16px">鳴ったときの記録</div>
+    <p class="note" style="margin-top:0">鳴る前の30秒の映像（小さな白黒の絵）と判断の値を、ファイルに保存できます。前が動いていないのに鳴ったときは、このファイルを送ってもらえれば、原因を調べて直せます。</p>
+    <div class="row"><button class="btn sub" id="recBtn">記録をファイルに保存する</button></div>
+    <p class="note" id="recNote"></p>
+  </div>
   <div class="card" id="shareCard">
     <div class="st" style="font-size:16px">仲間に教える</div>
     <p class="note" style="margin-top:0">Android のスマホは「アプリを入れる場所」から入れると、目覚ましと同じ音で鳴ります。iPhone などは、このページを開いて使えます（音は動画と同じ音量です）。</p>
@@ -67,7 +74,7 @@ select,input[type=range]{font:inherit;width:100%}
   <p class="note">使い方の注意：画面はつけたまま、充電しながら使ってください（画面が消えると見張りが止まります）。真っ暗・強い雨・前のトラックとの間が空きすぎているときは見落とすことがあります。最初はタイマーなども一緒に使って、どのくらい頼れるか確かめてください。</p>
 </main>
 <div id="alarm"><h2>前が動きました！</h2><button id="stopBtn">止める</button></div>
-<script src="../taiki.js?v=3"></script>
+<script src="../taiki.js?v=4"></script>
 <script>
 const $=id=>document.getElementById(id), T=window.NippoTaiki;
 const v=$('v'), ov=$('ov'), work=document.createElement('canvas'); work.width=T.W; work.height=T.H; const wx=work.getContext('2d',{willReadFrequently:true});
@@ -90,9 +97,11 @@ function keepOff(){ try{ if(window.NippoAndroid&&NippoAndroid.keepOn) NippoAndro
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&timer) keepOn(); });
 function tick(){ if(!v.videoWidth) return; const vw=v.videoWidth, vh=v.videoHeight, ar=16/9; let sw=vw, sh=vw/ar; if(sh>vh){ sh=vh; sw=vh*ar; }
   wx.drawImage(v,(vw-sw)/2,(vh-sh)/2,sw,sh,0,0,T.W,T.H); const g=T.toGray(wx);
-  const r=watcher.step(g,performance.now()/1000,box()); const th=watcher.o.th;
+  const tt=performance.now()/1000, r=watcher.step(g,tt,box()); const th=watcher.o.th;
+  REC.push({t:+tt.toFixed(2),g,d:+r.d.toFixed(3),sp:+(r.sp||0).toFixed(2),st:r.state}); while(REC.length>60) REC.shift();   // 鳴る前の30秒を覚えておく
   $('lvI').style.width=Math.min(100,r.d/(th*2)*100)+'%'; $('lvB').style.left='50%';
-  if(r.alarm&&!beepT){ $('alarm').classList.add('on'); beepStart(); $('st').textContent='前が動きました（'+r.why+'）'; return; }
+  if(r.alarm&&!beepT){ $('alarm').classList.add('on'); beepStart(); $('st').textContent='前が動きました（'+r.why+'）';
+    LASTREC={when:new Date().toISOString(),mode:$('sens').value,box:box(),w:T.W,h:T.H,ver:'taiki.js v4',frames:REC.slice()}; $('recCard').hidden=false; $('recNote').textContent=''; return; }
   if(r.event==='drove'){ alarmOff(); $('st').textContent='発進したので音を止めました。止まると自動でまた見張ります'; return; }
   if(r.event==='self'){ $('st').textContent='前に詰めています。止まって3秒たつと見張ります'; return; }
   if(r.state==='wait') $('st').textContent='止まるのを待っています（止まって3秒たつと見張ります）';
@@ -103,14 +112,25 @@ function soundNote(){ let t;
     t=(a===0)?'アラームの音量が0になっています。スマホの音量ボタンで「アラーム」の音量を上げてください（目覚ましと同じ音量で鳴ります）。':'目覚ましと同じ「アラーム」の音と音量で鳴ります（動画の音量をミュートにしていても鳴ります）。'; }
   else t='ブラウザで開いているので、動画などと同じ音量で鳴ります。動画の音量をミュートにしていると聞こえません。Android のスマホは「待機アラーム」アプリを入れると、目覚ましと同じアラームの音量で鳴ります（下の「仲間に教える」にある場所から入れられます）。';
   $('sn').textContent=t; }
-const MODES={early:{th:0.2,hold:3},std:{th:0.25,hold:4},late:{th:0.3,hold:6}};
+const MODES={early:{th:0.2,hold:3},std:{th:0.25,hold:4},late:{th:0.3,hold:6},vlate:{th:0.35,hold:8}};
+let REC=[], LASTREC=null;
+// 選んだタイミングを覚えておく（次に開いたときも同じ）
+try{ const sv=localStorage.getItem('taiki-sens'); if(sv&&MODES[sv]) $('sens').value=sv; }catch(e){}
+// 鳴ったときの記録をファイルに保存する（Android のアプリ：「ダウンロード」フォルダ／ブラウザ：ダウンロード）
+$('recBtn').onclick=()=>{ if(!LASTREC) return;
+  const b64=a=>{ let s=''; for(let i=0;i<a.length;i+=8192) s+=String.fromCharCode.apply(null,a.subarray(i,i+8192)); return btoa(s); };
+  const out=Object.assign({},LASTREC,{frames:LASTREC.frames.map(f=>({t:f.t,d:f.d,sp:f.sp,st:f.st,g:b64(f.g)}))});
+  const name='taiki-kiroku-'+LASTREC.when.replace(/[-:]/g,'').slice(0,15)+'.json', text=JSON.stringify(out);
+  try{ if(window.NippoAndroid&&NippoAndroid.save){ NippoAndroid.save(name,text); $('recNote').textContent='保存しました：'+name+'（スマホの「ダウンロード」の中）'; return; } }catch(e){}
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'application/json'})); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  $('recNote').textContent='保存しました：'+name; };
 function alarmOff(){ beepStop(); $('alarm').classList.remove('on'); }
 $('goBtn').onclick=async()=>{
   if(timer){ clearInterval(timer); timer=null; $('goBtn').textContent='見張りを始める'; $('st').textContent='止めました'; keepOff(); return; }
   if(!NATIVE){ try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); audio.resume(); }catch(e){} }   // 押したときに音を使えるようにしておく（待たない：許可が無いと終わらないことがあるため）
   watcher=new T.Watcher(MODES[$('sens').value]); await keepOn();
   $('st').textContent='止まるのを待っています（止まって3秒たつと見張ります）'; timer=setInterval(tick,500); $('goBtn').textContent='見張りを止める'; };
-$('sens').onchange=()=>{ if(watcher) Object.assign(watcher.o,MODES[$('sens').value]); };
+$('sens').onchange=()=>{ if(watcher) Object.assign(watcher.o,MODES[$('sens').value]); try{ localStorage.setItem('taiki-sens',$('sens').value); }catch(e){} };
 $('stopBtn').onclick=()=>{ alarmOff(); if(watcher) watcher.silence(); $('st').textContent='音を止めました。前に詰めて止まると、3秒たって自動でまた見張ります'; };
 soundNote();
 // 運行日報から開いたときだけ「もどる」を出す（待機アラームだけのアプリや、仲間がこのページを開いたときは出さない）
