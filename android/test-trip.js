@@ -56,10 +56,10 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
     params: { dwellSec: 20, exitSec: 10, farM: 300, stopSec: 30, stopR: 50, stillSec: 15, gapSec: 40, freshSec: 10, accMax: 50 },
     places: [
       { id: 'g', name: '車庫', type: 'garage', r: 60, lat: P.G[0], lon: P.G[1], arrText: '', doneTexts: [] },
-      { id: 'mc', name: 'KFKマシンセンター', type: 'site', r: 50, lat: P.MC[0], lon: P.MC[1], arrText: 'マシンセンター到着しました！', doneTexts: ['KFK完了！帰庫します！'] },
-      { id: 'km', name: 'KFK甲府南工場', type: 'site', r: 50, lat: P.KM[0], lon: P.KM[1], arrText: '甲府南工場着です！', doneTexts: ['KFK完了！帰庫します！'] },
+      { id: 'mc', name: 'KFKマシンセンター', type: 'site', r: 50, lat: P.MC[0], lon: P.MC[1], arrText: 'マシンセンター到着しました！', beforeTexts: ['{planMsg}'], doneTexts: ['KFK完了！帰庫します！'] },
+      { id: 'km', name: 'KFK甲府南工場', type: 'site', r: 50, lat: P.KM[0], lon: P.KM[1], arrText: '甲府南工場着です！', beforeTexts: ['{planMsg}'], doneTexts: ['KFK完了！帰庫します！', '勝山引き取り分、納品完了しました！小石和倉庫の横持ちに向います！'] },
       { id: 'pa', name: '国母パナソニック', type: 'site', r: 60, lat: P.PA[0], lon: P.PA[1], arrText: '', doneTexts: ['Panasonic{n}回目納品完了しました！'] },
-      { id: 'f', name: '牧野フライス富士吉田', type: 'site', r: 60, lat: P.F[0], lon: P.F[1], arrText: '', doneTexts: ['富士吉田納品引き取り完了！{plan}に向かいます！', '富士吉田納品引き取り完了！'] },
+      { id: 'f', name: '牧野フライス富士吉田', type: 'site', r: 60, lat: P.F[0], lon: P.F[1], arrText: '', doneTexts: ['富士吉田納品引き取り完了！{next}に向います！', '富士吉田納品引き取り完了しました！', '富士吉田納品完了！引き取り無しです！'] },
     ] };
   const info = await c.ev(`(()=>{ window.__st=[]; window.onTripStarted=r=>window.__st.push(r); return JSON.stringify({avail:NippoAndroid.tripAvailable(), save:NippoAndroid.confSave(${JSON.stringify(JSON.stringify(conf))})}); })()`);
   console.log('SETUP', info);
@@ -95,7 +95,7 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   t = readTrip(); dump();
   console.log('MID', JSON.stringify({ visits: t.visits, gaps: t.gaps, stops: t.stops }));
   let noti = adb('shell dumpsys notification --noredact');
-  check(noti.includes('マシンセンター到着しました') && noti.includes('KFK完了') && noti.includes('運行を記録中'), '通知：記録中・到着の連絡・完了の連絡', ['マシンセンター到着しました', 'KFK完了', '運行を記録中'].map(x => noti.includes(x)));
+  check(noti.includes('マシンセンター到着しました') && noti.includes('勝山、納品引き取りになります') && noti.includes('運行を記録中'), '通知：記録中・到着の連絡・予定の連絡', ['マシンセンター到着しました', '勝山、納品引き取りになります', '運行を記録中'].map(x => noti.includes(x)));
   check(!noti.includes('Panasonic1回目'), '通り過ぎたパナソニックの通知は出ていない');
   // ---- アプリが止められた（スマホが止めた・電池切れのつもり）→ 開き直す ----
   adb('shell input keyevent KEYCODE_WAKEUP');
@@ -110,6 +110,8 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   const tF = emuNow(); await at('F', 6);
   console.log('LOCOFF2', adb('shell cmd location set-location-enabled false')); await sleep(25000);
   fix(P.R6); console.log('LOCON2', adb('shell cmd location set-location-enabled true')); await sleep(1000); await at('R6', 12);
+  // ---- 牧野の後に、もう一度 KFK（甲府南）→ ここで「KFK完了！帰庫します！」 ----
+  await at('KM', 36); await at('R3', 12);
   // ---- 帰庫 ----
   const tG = emuNow(); await at('G', 36);
   await sleep(6000);
@@ -119,7 +121,7 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   // ---- 確かめる ----
   const V = t.visits || [], M = t.msgs || [];
   const names = V.map(v => v.pid);
-  check(JSON.stringify(names) === JSON.stringify(['g', 'mc', 'km', 'f', 'g']), '行の並び：車庫→マシンセンター→甲府南→富士吉田→車庫（パナソニックは通り過ぎたので行にしない）', names);
+  check(JSON.stringify(names) === JSON.stringify(['g', 'mc', 'km', 'f', 'km', 'g']), '行の並び：車庫→マシンセンター→甲府南→富士吉田→甲府南→車庫（パナソニックは通り過ぎたので行にしない）', names);
   check(V[0] && V[0].dep > 0, '車庫を出た時刻がある');
   const mc = V.find(v => v.pid === 'mc'), km = V.find(v => v.pid === 'km'), f = V.find(v => v.pid === 'f');
   check(mc && Math.abs(mc.arr - tMC) < 8000, 'マシンセンターの着：円に入った時刻（判定まで待った時間を含めない）', mc && (mc.arr - tMC) / 1000 + '秒差');
@@ -127,14 +129,16 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   check(km && km.dep > 0 && f && f.arr > 0 && f.dep > 0, '甲府南・富士吉田に着と発がある');
   check(V.filter(v => v.pid === 'mc').length === 1, '止まっている間に位置が55m揺れても、マシンセンターは1行のまま', V.filter(v => v.pid === 'mc').length);
   check(f && f.unsure === true && Math.abs(f.arr - tF) < 8000 && f.dep < f.arr + 15000, '富士吉田：位置が来ないまま外に出た→着〜最後に中にいた時刻で1行、要確認の印', f && [(f.arr - tF) / 1000, (f.dep - f.arr) / 1000, f.unsure]);
-  const g2 = V[4]; check(g2 && g2.arr > 0 && Math.abs(g2.arr - tG) < 8000, '帰庫の時刻', g2 && (g2.arr - tG) / 1000);
+  const g2 = V[5]; check(g2 && g2.arr > 0 && Math.abs(g2.arr - tG) < 8000, '帰庫の時刻', g2 && (g2.arr - tG) / 1000);
   const arrive = M.filter(m => m.kind === 'arrive');
   check(arrive.length === 1 && arrive[0].texts[0] === 'マシンセンター到着しました！' && arrive[0].posted, '到着の連絡は朝一のマシンセンターだけ（甲府南は出さない）', arrive.map(m => m.texts));
   const done = vid => M.find(m => m.kind === 'done' && m.vid === vid);
-  check(mc && done(mc.id) && done(mc.id).posted && done(mc.id).texts[0] === 'KFK完了！帰庫します！', 'マシンセンターを出た：完了の文を通知', mc && done(mc.id));
-  check(f && done(f.id) && JSON.stringify(done(f.id).texts) === JSON.stringify(['富士吉田納品引き取り完了！勝山に向かいます！', '富士吉田納品引き取り完了！']), '富士吉田：予定の行き先が付いた文', f && done(f.id) && done(f.id).texts);
+  check(mc && done(mc.id) && done(mc.id).posted && JSON.stringify(done(mc.id).texts) === JSON.stringify(['勝山、納品引き取りになります！🚛']), '朝（牧野の前）にマシンセンターを出た：予定の連絡（KFK完了は出さない）', mc && done(mc.id) && done(mc.id).texts);
+  const km2 = V.filter(v => v.pid === 'km')[1];
+  check(km2 && done(km2.id) && JSON.stringify(done(km2.id).texts) === JSON.stringify(['KFK完了！帰庫します！', '勝山引き取り分、納品完了しました！小石和倉庫の横持ちに向います！']), '牧野の後に KFK を出た：KFK完了！帰庫します！', km2 && done(km2.id) && done(km2.id).texts);
+  check(f && done(f.id) && JSON.stringify(done(f.id).texts) === JSON.stringify(['富士吉田納品引き取り完了！勝山に向います！', '富士吉田納品引き取り完了しました！', '富士吉田納品完了！引き取り無しです！']), '富士吉田：予定の行き先が付いた文', f && done(f.id) && done(f.id).texts);
   const gm = M.find(m => m.kind === 'garage');
-  check(gm && gm.texts[0] === 'お疲れ様です！車庫着明日、点呼6:00です！', '帰庫の連絡', gm && gm.texts);
+  check(gm && /^お疲れ様です！車庫着(明日|[月火水木金]曜日)、点呼6:00です！$/.test(gm.texts[0]), '帰庫の連絡（次に行く日：明日／金曜なら月曜日）', gm && gm.texts);
   check(t.active === false && t.endWhy === 'garage', '車庫に着いたら自動で止まった', [t.active, t.endWhy]);
   await sleep(3000);
   svc = adb(`shell dumpsys activity services ${PKG}`);
@@ -152,20 +156,20 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   adb(`shell am start -W -n ${PKG}/.MainActivity`); await sleep(5000);
   pid = adb(`shell pidof ${PKG}`); adb(`forward tcp:9222 localabstract:webview_devtools_remote_${pid}`);
   c = await connect(9222);
-  await c.ev(`NippoAndroid.lineSend('KFK完了！帰庫します！', ${done(mc.id).id})`); await sleep(3000);
+  await c.ev(`NippoAndroid.lineSend('勝山、納品引き取りになります！🚛', ${done(mc.id).id})`); await sleep(3000);
   const top = adb('shell dumpsys activity activities').split('\n').filter(l => /mResumedActivity|topResumedActivity/.test(l)).join(' | ');
   sh('adb exec-out screencap -p > out/trip-share.png');
   check(/Chooser|Resolver|intentresolver/i.test(top), '「送る先を選ぶ」画面が開いた', top.slice(0, 200));
   adb('shell input keyevent KEYCODE_BACK'); await sleep(1500);
   t = readTrip();
   const sent = (t.msgs || []).find(m => m.id === done(mc.id).id);
-  check(sent && sent.sent === true && sent.sentText === 'KFK完了！帰庫します！', '開いたら「送信済み」になった', sent);
+  check(sent && sent.sent === true && sent.sentText === '勝山、納品引き取りになります！🚛', '開いたら「送信済み」になった', sent);
   // ---- もう一度［出庫］→ 今日の続き（出庫の連絡を出さない）----
   await c.ev('window.__st=[]; window.onTripStarted=r=>window.__st.push(r); NippoAndroid.tripStart(8)'); await sleep(3000);
   const st1 = await c.ev('JSON.stringify(window.__st)');
   check(st1 === '[true]', '同じ日に出庫を押し直すと、続きから記録', st1);
-  t = readTrip(); check(t.active === true && (t.visits || []).length === 5, '続きでも、それまでの行は消えない', (t.visits || []).length);
-  check(t.cur && t.cur.arrived === true && t.cur.vid === t.visits[4].id, '車庫で押し直した：車庫の行の続き（出たら「発」が入る。すぐ止まらない）', t.cur);
+  t = readTrip(); check(t.active === true && (t.visits || []).length === 6, '続きでも、それまでの行は消えない', (t.visits || []).length);
+  check(t.cur && t.cur.arrived === true && t.cur.vid === t.visits[5].id, '車庫で押し直した：車庫の行の続き（出たら「発」が入る。すぐ止まらない）', t.cur);
   await c.ev('NippoAndroid.tripStop()'); await sleep(2000);
   t = readTrip(); check(t.active === false && t.endWhy === 'button', '［終わり］で止まる', [t.active, t.endWhy]);
 
