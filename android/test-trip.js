@@ -19,7 +19,7 @@ function dump() { try { fs.writeFileSync('out/trip.json', JSON.stringify(readTri
 // ---- 場所（試験用の架空の位置。緯度 0.001 ≒ 111m、経度 0.001 ≒ 90m）----
 const P = {
   G: [35.6000, 138.5000], MC: [35.6100, 138.5100], KM: [35.6100, 138.5110], PA: [35.6200, 138.5200], F: [35.6300, 138.5300], X: [35.6400, 138.5400],
-  R1: [35.6050, 138.5050], R2: [35.6150, 138.5150], R3: [35.6200, 138.5050], R4: [35.6450, 138.5450], R5: [35.6350, 138.5350], R6: [35.6250, 138.5250],
+  R1: [35.6050, 138.5050], R2: [35.6150, 138.5150], R3: [35.6200, 138.5050], R4: [35.6450, 138.5450], R5: [35.6350, 138.5350], R6: [35.6250, 138.5250], MCD: [35.6105, 138.5100],
 };
 const fix = ([lat, lon]) => adb(`emu geo fix ${lon} ${lat}`);
 async function at(name, sec) { const t = Date.now(); while (Date.now() - t < sec * 1000) { fix(P[name]); await sleep(3000); } }
@@ -45,6 +45,7 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
 
 (async () => {
   console.log('ROOT', adb('root')); await sleep(4000); adb('wait-for-device');
+  adb('shell svc power stayon true');
   // 試験の前に、位置を車庫に置いておく
   for (let k = 0; k < 3; k++) { fix(P.G); await sleep(1500); }
   let pid = adb(`shell pidof ${PKG}`); adb(`forward tcp:9222 localabstract:webview_devtools_remote_${pid}`);
@@ -52,7 +53,7 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   const today = await c.ev(`(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()`);
   const conf = {
     cars: [6, 8], car: 8, tenko: '6:00', plan: '勝山', planDay: today,
-    params: { dwellSec: 20, exitSec: 10, farM: 300, stopSec: 30, stopR: 50, stillSec: 15, gapSec: 40, freshSec: 20, accMax: 50 },
+    params: { dwellSec: 20, exitSec: 10, farM: 300, stopSec: 30, stopR: 50, stillSec: 15, gapSec: 40, freshSec: 10, accMax: 50 },
     places: [
       { id: 'g', name: '車庫', type: 'garage', r: 60, lat: P.G[0], lon: P.G[1], arrText: '', doneTexts: [] },
       { id: 'mc', name: 'KFKマシンセンター', type: 'site', r: 50, lat: P.MC[0], lon: P.MC[1], arrText: 'マシンセンター到着しました！', doneTexts: ['KFK完了！帰庫します！'] },
@@ -81,6 +82,8 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   await at('PA', 9); await at('R2', 9);
   // ---- マシンセンターに着く（朝一）----
   const tMC = emuNow(); await at('MC', 36);
+  // 止まっている間に位置が55m揺れた（円50m＋余裕30m の内側）：15秒続いても「出た」にしない
+  await at('MCD', 15); await at('MC', 6);
   // ---- そのまま隣の甲府南工場へ ----
   const tKM = emuNow(); await at('KM', 45);
   await at('R3', 12);
@@ -104,7 +107,9 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   check(/TripService/.test(svc), '開き直したら記録が続く');
   adb('shell input keyevent KEYCODE_HOME'); await sleep(1000); adb('shell input keyevent KEYCODE_SLEEP');
   // ---- 富士吉田（予定「勝山」が入っている）----
-  await at('F', 36); await at('R6', 12);
+  const tF = emuNow(); await at('F', 6);
+  console.log('LOCOFF2', adb('shell cmd location set-location-enabled false')); await sleep(25000);
+  fix(P.R6); console.log('LOCON2', adb('shell cmd location set-location-enabled true')); await sleep(1000); await at('R6', 12);
   // ---- 帰庫 ----
   const tG = emuNow(); await at('G', 36);
   await sleep(6000);
@@ -120,6 +125,8 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   check(mc && Math.abs(mc.arr - tMC) < 8000, 'マシンセンターの着：円に入った時刻（判定まで待った時間を含めない）', mc && (mc.arr - tMC) / 1000 + '秒差');
   check(mc && km && mc.dep > 0 && Math.abs(km.arr - mc.dep) < 1000, '隣の甲府南へ：マシンセンターの発＝甲府南の着', mc && km && [(mc.dep - tKM) / 1000, (km.arr - tKM) / 1000]);
   check(km && km.dep > 0 && f && f.arr > 0 && f.dep > 0, '甲府南・富士吉田に着と発がある');
+  check(V.filter(v => v.pid === 'mc').length === 1, '止まっている間に位置が55m揺れても、マシンセンターは1行のまま', V.filter(v => v.pid === 'mc').length);
+  check(f && f.unsure === true && Math.abs(f.arr - tF) < 8000 && f.dep < f.arr + 15000, '富士吉田：位置が来ないまま外に出た→着〜最後に中にいた時刻で1行、要確認の印', f && [(f.arr - tF) / 1000, (f.dep - f.arr) / 1000, f.unsure]);
   const g2 = V[4]; check(g2 && g2.arr > 0 && Math.abs(g2.arr - tG) < 8000, '帰庫の時刻', g2 && (g2.arr - tG) / 1000);
   const arrive = M.filter(m => m.kind === 'arrive');
   check(arrive.length === 1 && arrive[0].texts[0] === 'マシンセンター到着しました！' && arrive[0].posted, '到着の連絡は朝一のマシンセンターだけ（甲府南は出さない）', arrive.map(m => m.texts));
@@ -161,6 +168,36 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   check(t.cur && t.cur.arrived === true && t.cur.vid === t.visits[4].id, '車庫で押し直した：車庫の行の続き（出たら「発」が入る。すぐ止まらない）', t.cur);
   await c.ev('NippoAndroid.tripStop()'); await sleep(2000);
   t = readTrip(); check(t.active === false && t.endWhy === 'button', '［終わり］で止まる', [t.active, t.endWhy]);
+
+  // ---- 前の日の記録が「記録中」のまま残っていた（止め忘れ・電池切れ）----
+  const old = readTrip(); old.active = true; old.day = '2000-01-01'; delete old.endWhy; delete old.endTs;
+  fs.writeFileSync('out/old.json', JSON.stringify(old));
+  const uid = adb(`shell stat -c %u /data/data/${PKG}`);
+  adb(`push out/old.json /data/data/${PKG}/files/trip.json`); adb(`shell chown ${uid}:${uid} /data/data/${PKG}/files/trip.json`); adb(`shell chmod 600 /data/data/${PKG}/files/trip.json`);
+  adb('shell input keyevent KEYCODE_HOME'); await sleep(1500);
+  adb(`shell am start -W -n ${PKG}/.MainActivity`); await sleep(4000);
+  t = readTrip();
+  check(t.active === false && t.endWhy === 'nextday' && !/TripService/.test(adb(`shell dumpsys activity services ${PKG}`)), '開いたとき前の日の記録だったら、続けずに止める', [t.active, t.endWhy]);
+  await c.ev('window.__st=[]; window.onTripStarted=r=>window.__st.push(r); NippoAndroid.tripStart(6)'); await sleep(3000);
+  t = readTrip(); const st2 = await c.ev('JSON.stringify(window.__st)');
+  check(st2 === '[false]' && t.day !== '2000-01-01' && (t.visits || []).length <= 1 && t.car === 6, '翌朝の［出庫］は新しい1日（出庫の連絡も出す）', [st2, t.day, (t.visits || []).length]);
+  await c.ev('NippoAndroid.tripStop()'); await sleep(2000);
+  // ---- 位置の許可が無いまま［場所の登録］→ 許可を押したら、そのまま位置が取れる ----
+  adb('shell input keyevent KEYCODE_WAKEUP'); adb('shell wm dismiss-keyguard');
+  adb(`shell pm revoke ${PKG} android.permission.ACCESS_FINE_LOCATION`); adb(`shell pm revoke ${PKG} android.permission.ACCESS_COARSE_LOCATION`); await sleep(3000);
+  adb(`shell am start -W -n ${PKG}/.MainActivity`); await sleep(4000);
+  pid = adb(`shell pidof ${PKG}`); adb(`forward tcp:9222 localabstract:webview_devtools_remote_${pid}`); c = await connect(9222);
+  await c.ev('NippoAndroid.fixStart()'); await sleep(3000);
+  let tapped = false;
+  for (let k = 0; k < 5 && !tapped; k++) {
+    adb('shell uiautomator dump /sdcard/ui.xml'); const xml = adb('shell cat /sdcard/ui.xml');
+    const m = xml.match(/resource-id="com\.android\.permissioncontroller:id\/permission_allow_foreground_only_button"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/) || xml.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_allow_foreground_only_button"/);
+    if (m) { adb(`shell input tap ${(+m[1] + +m[3]) >> 1} ${(+m[2] + +m[4]) >> 1}`); tapped = true; } else await sleep(1500);
+  }
+  await sleep(2000);
+  for (let k = 0; k < 4; k++) { fix(P.X); await sleep(2000); }
+  let got = ''; for (let k = 0; k < 15 && !got; k++) { got = await c.ev('NippoAndroid.fixGet()'); if (!got) { fix(P.X); await sleep(2000); } }
+  check(tapped && !!got && Math.abs(JSON.parse(got).lat - P.X[0]) < 0.001, '許可が無いまま［場所の登録］→「アプリの使用中のみ」を押すと、そのまま位置が取れる', [tapped, got.slice(0, 80)]);
 
   dump();
   if (fails.length) { console.log('FAIL: ' + fails.join(' / ')); process.exitCode = 3; }
