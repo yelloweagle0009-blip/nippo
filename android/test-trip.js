@@ -135,7 +135,7 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   const stops = t.stops || [];
   check(stops.length === 1 && stops[0].end > stops[0].start && Math.abs(stops[0].lat - P.X[0]) < 0.001, '登録していない場所で止まった所を1つ記録', stops);
   const gaps = t.gaps || [];
-  check(gaps.length >= 2, '位置が来なかった時間（トンネル・アプリが止められた間）を記録', gaps.map(g => (g.to - g.from) / 1000));
+  check(gaps.length === 2, '位置が来なかった時間（トンネル・アプリが止められた間）を記録', gaps.map(g => (g.to - g.from) / 1000));
   check(km && done(km.id) && done(km.id).buzzed === true, '未送信のまま止まったら1回だけ振動（甲府南の完了）', km && done(km.id));
   noti = adb('shell dumpsys notification --noredact');
   check(noti.includes('富士吉田納品引き取り完了') && noti.includes('点呼6:00') && !noti.includes('運行を記録中'), '通知：富士吉田の完了・帰庫の連絡（記録中の通知は消えた）', ['富士吉田納品引き取り完了', '点呼6:00', '運行を記録中'].map(x => noti.includes(x)));
