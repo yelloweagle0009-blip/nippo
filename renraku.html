@@ -128,7 +128,8 @@ const NAMES=['車庫','KFKマシンセンター','KFK甲府南工場','国母パ
 const WORDS=['到着しました！','完了しました！','向かいます！','待機中です','遅れます','渋滞です','納品','引き取り','帰庫します！'];
 const SHORT=n=>({'KFKマシンセンター':'マシンセンター','KFK甲府南工場':'甲府南','国母パナソニック':'Panasonic','牧野フライス勝山':'勝山','牧野フライス富士吉田':'富士吉田','小石和倉庫':'小石和'}[n]||n);
 
-const T=()=>(S&&S.trip)||{};
+// 今日の記録だけを使う（前の日の記録が残っていても、今日の画面・日報には出さない）
+const T=()=>{ const t=(S&&S.trip)||{}; return t.day===today()?t:{}; };
 const C=()=>(S&&S.conf)||{};
 function confSave(c){ if(!HAS) return; A.confSave(JSON.stringify(c)); load(true); }
 function patch(kind,id,o){ if(!HAS) return; A.tripPatch(kind,id,JSON.stringify(o)); load(true); }
@@ -155,7 +156,7 @@ function toast(h,ms){ const el=$('toast'); el.innerHTML=h; el.hidden=false; clea
 
 // ---- 出庫 ----
 window.onTripStarted=r=>{
-  if(r==='denied'){ toast('位置の許可が無いので記録できません。「アプリの使用中のみ」を選んでください（設定→アプリ→運行日報→権限→位置情報）。',9000); return; }
+  if(r==='denied'){ toast('位置の許可が無いので記録できません。もう一度［出庫］を押して、「正確な位置」をオンにしたまま「アプリの使用中のみ」を選んでください。出てこないときは、スマホの設定 → アプリ → 運行日報 → 権限 → 位置情報 で「アプリの使用中のみ許可」と「正確な位置情報を使用」をオンにしてください。',9000); return; }
   load(true);
   if(r===false){
     const c=C(); c.plan=''; c.planDay=''; A.confSave(JSON.stringify(c));
@@ -168,8 +169,11 @@ window.onTripStarted=r=>{
 function load(force){
   if(!HAS) return;
   const s=A.tripState(); if(!s) return;
-  if(!force&&s===raw) return;
-  raw=s; S=JSON.parse(s);
+  const o=JSON.parse(s), tr=o.trip||{};
+  // 5秒ごとに変わる値（いまの時刻・最後の位置・止まり判定の途中）は比べない
+  const key=JSON.stringify([o.conf,o.running,o.loc,{...tr,lastFix:0,anchor:0,cand:0,cur:tr.cur?{...tr.cur,outSince:0}:0}]);
+  if(!force&&key===raw) return;
+  raw=key; S=o;
   if(view==='home'&&!document.activeElement.matches('input,textarea,select')) render();
   head();
 }
@@ -233,7 +237,7 @@ home(){
     const dep=(t.msgs||[]).find(m=>m.kind==='depart');
     if(dep) h+=`<li data-msg="${dep.id}"><span class="t">${hmOf(dep.ts)}<small>出庫ボタン</small></span><span class="n">出庫の連絡</span>${dep.sent?'<span class="st sent">✓送信済み</span>':'<span class="st wait">⏳未送信</span>'}</li>`;
     vs.forEach(v=>{ const ct=cargoTxt(v);
-      h+=`<li data-visit="${v.id}">${timeCell(v)}<span class="n">${esc(v.name)}${v.manual?'（手で入れた）':''}<small>${ct?esc(ct):''}${v.meter?' メーター'+esc(v.meter):''}</small></span>${v.type==='site'||v.type==='garage'?stOf(v):'<span class="st none">立ち寄り</span>'}</li>`; });
+      h+=`<li data-visit="${v.id}">${timeCell(v)}<span class="n">${esc(v.name)}${v.manual?'（手で入れた）':''}${v.unsure?'<small style="color:var(--warn)">位置が来なかった間に着いた・出た。時刻を確かめて</small>':''}<small>${ct?esc(ct):''}${v.meter?' メーター'+esc(v.meter):''}</small></span>${v.type==='site'||v.type==='garage'?stOf(v):'<span class="st none">立ち寄り</span>'}</li>`; });
     (t.gaps||[]).forEach(g=>{ if(g.to-g.from>=5*60000) h+=`<li><span class="t">${hmOf(g.from)}<small>〜${hmOf(g.to)}</small></span><span class="n" style="color:var(--warn)">位置が分からない時間<small>トンネル・電池切れなど。必要なら行を手で足す</small></span><span></span></li>`; });
     (t.msgs||[]).filter(m=>m.vid===-1&&m.kind!=='depart').forEach(m=>h+=`<li data-msg="${m.id}"><span class="t">${hmOf(m.ts)}<small>${m.kind==='wash'?'ボタン':'手打ち'}</small></span><span class="n">${esc(m.texts[0])}</span>${m.sent?'<span class="st sent">✓</span>':'<span class="st wait">⏳</span>'}</li>`);
     h+=`</ul><p class="note">時刻は日報に入れる5分刻み。小さい字は実際の時刻。行を押すと直せます。</p><button class="btn sm" data-act="addVisit">行を手で足す</button></div>`;
