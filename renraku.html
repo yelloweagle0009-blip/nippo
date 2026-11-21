@@ -118,12 +118,19 @@ function defaults(name){
   if(/洗車|給油|スタンド/.test(n)) return {type:'stop',r:50,arrText:'',doneTexts:[]};
   if(/パナソニック|Panasonic/i.test(n)) o.doneTexts=['Panasonic{n}回目納品完了しました！'];
   else if(/勝山/.test(n)) o.doneTexts=['勝山完了しました！'];
-  else if(/富士吉田/.test(n)) o.doneTexts=['富士吉田納品引き取り完了！{plan}に向かいます！','富士吉田納品引き取り完了！'];
-  else if(/マシンセンター|甲府南|KFK/.test(n)) o.doneTexts=['KFK完了！帰庫します！'];
+  else if(/富士吉田/.test(n)) o.doneTexts=['富士吉田納品引き取り完了！{next}に向います！','富士吉田納品引き取り完了しました！','富士吉田納品完了！引き取り無しです！'];
+  else if(/小石和/.test(n)) o.doneTexts=[];   // 小石和倉庫の横持ちの後は KFK に戻ってから「KFK完了！帰庫します！」
+  else if(/マシンセンター|甲府南|KFK/.test(n)){
+    // 朝（牧野に行く前）に出るとき：予定が入っていれば「富士吉田、納品引き取りになります！🚛」。無ければ送らない（Panasonic の日）
+    o.beforeTexts=['{planMsg}'];
+    // 牧野（勝山・富士吉田）の後に出るとき
+    o.doneTexts=['KFK完了！帰庫します！','勝山引き取り分、納品完了しました！小石和倉庫の横持ちに向います！','KFK完了！洗車＆給油してから帰庫します！'];
+  }
   if(/マシンセンター/.test(n)){ o.arrText='マシンセンター到着しました！'; o.r=50; }
   if(/甲府南/.test(n)){ o.arrText='甲府南工場着です！'; o.r=50; }
   return o;
 }
+const PHRASES=['洗車＆給油完了しました！','洗車完了しました！','給油完了しました！','マシンセンター付近着です！','勝山引き取り分、納品完了しました！小石和倉庫の横持ちに向います！','KFK完了！洗車＆給油してから帰庫します！'];
 const NAMES=['車庫','KFKマシンセンター','KFK甲府南工場','国母パナソニック','牧野フライス勝山','牧野フライス富士吉田','小石和倉庫','洗車場','給油所'];
 const WORDS=['到着しました！','完了しました！','向かいます！','待機中です','遅れます','渋滞です','納品','引き取り','帰庫します！'];
 const SHORT=n=>({'KFKマシンセンター':'マシンセンター','KFK甲府南工場':'甲府南','国母パナソニック':'Panasonic','牧野フライス勝山':'勝山','牧野フライス富士吉田':'富士吉田','小石和倉庫':'小石和'}[n]||n);
@@ -134,7 +141,13 @@ const C=()=>(S&&S.conf)||{};
 function confSave(c){ if(!HAS) return; A.confSave(JSON.stringify(c)); load(true); }
 function patch(kind,id,o){ if(!HAS) return; A.tripPatch(kind,id,JSON.stringify(o)); load(true); }
 function add(kind,o){ if(!HAS) return -1; const id=A.tripAdd(kind,JSON.stringify(o)); load(true); return id; }
-const planToday=()=>{ const c=C(); return c.planDay===today()&&c.plan?c.plan:''; };
+// 今日の予定（行き先を順番に。例：富士吉田→勝山）
+const plansToday=()=>{ const c=C(); if(c.planDay!==today()) return []; return Array.isArray(c.plans)?c.plans:(c.plan?[c.plan]:[]); };
+const visitedToday=x=>(T().visits||[]).some(v=>v.arr!=null&&(v.name.includes(x)||(x==='Panasonic'&&/パナソニック/.test(v.name))));
+const restPlans=()=>plansToday().filter(x=>!visitedToday(x));
+// 名取さんの LINE（11/4・11/11・11/12・11/13）の書き方
+const planMsg=P=>!P.length?'':P.length===1?`${P[0]}、納品引き取りになります！🚛`:`${P[0]}、${P.slice(1).join('、')}納品引き取りになります！🚛${P[0]}からまわります！`;
+const planToday=()=>restPlans().join('、');
 const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); };
 const places=()=>C().places||[];
 const visits=()=>(T().visits||[]).slice().sort((a,b)=>(a.arr??a.dep??0)-(b.arr??b.dep??0));
@@ -160,7 +173,7 @@ window.onTripStarted=r=>{
   load(true);
   if(r===false){
     const c=C(); c.plan=''; c.planDay=''; A.confSave(JSON.stringify(c));
-    const car=T().car, text=`おはようございます！${car}番出庫します！🚛`;
+    const car=T().car, text=`おはようございます!${car}番出庫します!🚛`;
     const id=add('msgs',{kind:'depart',vid:-1,texts:[text],ts:Date.now(),sent:false,posted:true});
     send(text,id);
   } else toast('今日の記録の続きから始めました（昼に車庫へ戻ったときなど）。');
@@ -197,7 +210,7 @@ function timeCell(v){
   return `<span class="t">${a||'　'}${d?'-'+d:(v.arr!=null?'-':'')}<small>${v.arr!=null?hmOf(v.arr):''}${v.dep!=null?'〜'+hmOf(v.dep):''}</small></span>`;
 }
 function stOf(v){
-  const ms=msgsOf(v.id); if(!ms.length) return '<span class="st none">連絡なし</span>';
+  const ms=msgsOf(v.id).filter(m=>m.texts&&m.texts.length); if(!ms.length) return '<span class="st none">連絡なし</span>';
   return '<span class="sts">'+ms.map(m=>m.sent?'<span class="st sent">✓送信済み</span>':m.skip?'<span class="st none">送らない</span>':m.posted?'<span class="st wait">⏳未送信</span>':'<span class="st none">まだ</span>').join('')+'</span>';
 }
 const cargoTxt=v=>(v.cargo||[]).filter(x=>x.n).map(x=>(x.dir==='in'?'積':'卸')+x.n+(x.unit||'')).join('・');
@@ -211,7 +224,7 @@ home(){
   if(t.active&&!S.running) h+=`<div class="warn">記録が止まっています（スマホが止めた可能性）。この画面を開いたので、続きを始めます。止まっていた間は「位置が分からない時間」になります。</div>`;
   if(!t.active){
     const cars=c.cars||[6,8], sel=c.car||cars[0];
-    h+=`<div class="card"><h3>出庫</h3><p class="sub">車番を選んで［出庫］。LINE に「おはようございます！${sel}番出庫します！🚛」が入った状態で開きます（送るのは自分）。休みの日は押さなければ、位置は一度も見ません。</p>
+    h+=`<div class="card"><h3>出庫</h3><p class="sub">車番を選んで［出庫］。LINE に「おはようございます!${sel}番出庫します!🚛」が入った状態で開きます（送るのは自分）。休みの日は押さなければ、位置は一度も見ません。</p>
       <div class="chips">${cars.map(n=>`<button class="chip${n==sel?' on':''}" data-car="${n}">${n}番</button>`).join('')}<button class="chip" data-act="carAdd">＋車番</button></div>
       <button class="btn solid" data-act="start">出庫（記録を始める）</button></div>`;
     if(t.day===today()&&t.startTs) h+=`<div class="okb">今日の記録は ${t.endWhy==='garage'?'車庫に着いたので':''}止まっています。続ける時は［出庫］を押すと、続きから記録します（LINE の出庫連絡は出しません）。</div>`;
@@ -248,7 +261,7 @@ compose(a){
   // a = {mid} 自動の文を変えて送る ／ なし＝自分で書く
   const m=a&&a.mid!=null?(T().msgs||[]).find(x=>x.id===a.mid):null;
   const init=m?(m.texts[a.i||0]||m.texts[0]):(a&&a.text)||'';
-  const ph=C().phrases||['洗車＆給油完了しました！'];
+  const ph=C().phrases||PHRASES.slice();
   return back+`<div class="card"><h3>${m?'文を変えて送る':'自分で書く'}</h3>
    <textarea id="tx" placeholder="ボタンを押すと文に足していきます。キーボードのマイクで声でも入れられます">${esc(init)}</textarea>
    <div class="two" style="margin-top:6px"><button class="btn sm ghost" data-act="txClear">消す</button><button class="btn sm ghost" data-act="txBs">1つもどす</button></div>
@@ -260,15 +273,19 @@ compose(a){
    <p class="note">LINE の「送る先を選ぶ」画面に文が入ります。グループを選んで送信してください。</p></div>`;
 },
 phrases(){
-  const ph=C().phrases||['洗車＆給油完了しました！'];
+  const ph=C().phrases||PHRASES.slice();
   return `<p><button class="btn ghost" data-go="compose">← もどる</button></p><div class="card"><h3>よく使う文</h3>${ph.map((p,i)=>`<div class="cg"><button class="btn sm ghost" data-ph="${i}" data-how="up" ${i?'':'disabled'}>↑</button><span>${esc(p)}</span><button class="btn sm ghost" data-ph="${i}" data-how="del">消す</button></div>`).join('')||'<p class="note">ありません</p>'}</div>`;
 },
 plan(){
-  const sites=places().filter(p=>p.type==='site'), pl=planToday();
-  const names=sites.length?sites.map(p=>SHORT(p.name)):['勝山','富士吉田','Panasonic','KFK'];
-  return back+`<div class="card"><h3>今日の予定（午後の行き先など）</h3><p class="sub">入れておくと「富士吉田納品引き取り完了！<b>勝山</b>に向かいます！」のように、完了の文に行き先が付きます。入れなければ付きません。日が変わると消えます。</p>
-   <div class="chips">${names.map(n=>`<button class="chip${n===pl?' on':''}" data-plan="${esc(n)}">${esc(n)}</button>`).join('')}<button class="chip${pl?'':' on'}" data-plan="">なし</button></div>
-   ${pl?`<p style="margin-top:12px"><button class="btn line" data-act="planSend">「午後は${esc(pl)}、納品引き取りになります！」を送る</button></p>`:''}</div>`;
+  const P=plansToday(), R=restPlans();
+  const names=['富士吉田','勝山'].concat(places().filter(p=>p.type==='site').map(p=>SHORT(p.name)).filter(n=>!['富士吉田','勝山'].includes(n)&&!/マシンセンター|甲府南|Panasonic/.test(n)));
+  return back+`<div class="card"><h3>今日の予定（牧野の行き先）</h3><p class="sub">行く順に押します（富士吉田→勝山の日は、富士吉田を先に）。もう一度押すと外れます。日が変わると消えます。</p>
+   <div class="chips">${names.map(n=>{ const i=P.indexOf(n); return `<button class="chip${i>=0?' on':''}" data-plan="${esc(n)}">${i>=0?(i+1)+'. ':''}${esc(n)}</button>`; }).join('')}<button class="chip" data-plan="">全部外す</button></div>
+   <p class="note">入れると、次の文が自動で出ます：<br>・朝 KFK（甲府南・マシンセンター）を出るとき「${esc(planMsg(R)||'—')}」<br>・富士吉田を出るとき「富士吉田納品引き取り完了！${esc(R.filter(x=>x!=='富士吉田')[0]||'—')}に向います！」</p>
+   ${R.length?`<div class="stack" style="margin-top:12px"><button class="btn line" data-act="planSend" data-v="am">${esc(planMsg(R))}</button><button class="btn line" data-act="planSend" data-v="pm">午後は${esc(R.join('、'))}、納品引き取りになります！</button></div>`:''}</div>`;
+},
+wash(){
+  return back+`<div class="card"><h3>洗車・給油</h3><div class="stack">${['洗車＆給油完了しました！','洗車完了しました！','給油完了しました！'].map(x=>`<button class="btn line" data-wash="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`;
 },
 cargo(vid){
   const v=(T().visits||[]).find(x=>x.id===vid); if(!v) return back;
@@ -285,7 +302,7 @@ cargo(vid){
 visit(vid){
   const v=(T().visits||[]).find(x=>x.id===vid); if(!v) return back;
   const tv=ts=>ts!=null?(()=>{const d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMinutes());})():'';
-  const ms=msgsOf(v.id);
+  const ms=msgsOf(v.id).filter(m=>m.texts&&m.texts.length);
   return back+`<div class="card"><h3>行を直す</h3>
    <label>場所の名前</label><input id="vName" value="${esc(v.name)}" list="pl"><datalist id="pl">${NAMES.concat(places().map(p=>p.name)).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
    <div class="two"><div><label>着（実際の時刻）</label><input id="vArr" type="time" value="${tv(v.arr)}"></div><div><label>発（実際の時刻）</label><input id="vDep" type="time" value="${tv(v.dep)}"></div></div>
@@ -309,7 +326,8 @@ place(id){
    <label>種類</label><select id="eType"><option value="site"${p.type==='site'?' selected':''}>荷主（日報の行にする・完了の連絡）</option><option value="garage"${p.type==='garage'?' selected':''}>車庫（出庫・帰庫）</option><option value="stop"${p.type==='stop'?' selected':''}>立ち寄り（洗車・給油など。行にしない）</option></select>
    <label>半径（メートル）。隣どうしの場所は50前後</label><input id="eR" type="number" inputmode="numeric" value="${p.r}">
    <label>到着の連絡（その日いちばん最初に着いた荷主のときだけ。空なら送らない）</label><input id="eArr" value="${esc(p.arrText||'')}">
-   <label>完了の連絡（1行に1つ。{n}＝今日の回数、{plan}＝予定の行き先。{plan}のある文は予定がある日だけ出す）</label><textarea id="eDone">${esc((p.doneTexts||[]).join('\n'))}</textarea>
+   ${p.beforeTexts?`<label>朝（その日まだ牧野に行く前）にここを出るときの連絡（1行に1つ。{planMsg}＝予定の連絡。予定が無い日は送らない）</label><textarea id="eBefore">${esc(p.beforeTexts.join('\n'))}</textarea>`:''}
+   <label>${p.beforeTexts?'牧野の後にここを出るときの連絡':'完了の連絡'}（1行に1つ。{n}＝今日の回数、{next}＝予定の次の行き先。{next}のある文は予定がある日だけ出す）</label><textarea id="eDone">${esc((p.doneTexts||[]).join('\n'))}</textarea>
    <p class="note"><a class="map" href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}">地図で中心を確かめる</a>（${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}）</p>
    <div class="stack" style="margin-top:10px"><button class="btn solid" data-act="eSave" data-id="${esc(p.id)}">保存</button><button class="btn" data-act="eMove" data-id="${esc(p.id)}">中心をいまの場所に移す</button><button class="btn ghost" data-act="eDel" data-id="${esc(p.id)}">この場所を消す</button></div></div>`;
 },
@@ -367,11 +385,12 @@ function toNippo(){
   setTimeout(()=>location.href='./',900);
 }
 
+const garageText=(day,tk)=>`お疲れ様です！車庫着${day}、点呼${tk||C().tenko||'6:00'}です！`;
 // ---- 場所カード・連絡 ----
 function placeCard(v,p,now){
   const ms=msgsOf(v.id), ct=cargoTxt(v);
   let h=`<div class="card now"><h3>いま：${esc(v.name)}</h3><p class="sub">${v.arr!=null?hmOf(v.arr)+'〜':'出庫前'}${ct?'　'+esc(ct):''}${v.meter?'　メーター'+esc(v.meter):''}</p><div class="stack">`;
-  ms.forEach(m=>{ if(m.sent){ h+=`<div class="okb">✓ ${esc(m.sentText||m.texts[0])}</div>`; return; } if(m.skip) return;
+  ms.forEach(m=>{ if(!m.texts||!m.texts.length) return; if(m.sent){ h+=`<div class="okb">✓ ${esc(m.sentText||m.texts[0])}</div>`; return; } if(m.skip) return;
     m.texts.forEach((x,i)=>h+=`<button class="btn line" data-send="${m.id}" data-i="${i}">${m.kind==='arrive'?'到着を送る':'完了を送る'}：${esc(x)}</button>`);
     h+=`<div class="two"><button class="btn sm" data-go="compose" data-a='${JSON.stringify({mid:m.id})}'>文を変えて送る</button><button class="btn sm ghost" data-mark="${m.id}">送った（直接 LINE で）</button></div>`; });
   if(v.type==='site') h+=`<button class="btn" data-go="cargo" data-a="${v.id}">荷物の数・メーター</button>`;
@@ -380,7 +399,9 @@ function placeCard(v,p,now){
 function msgBox(m){
   const v=(T().visits||[]).find(x=>x.id===m.vid);
   let h=`<div class="msg"><p class="sub">${v?esc(v.name)+'　':''}${hmOf(m.postTs||m.ts)}</p>`;
-  if(m.kind==='garage') h+=`<label>明日の点呼</label><input id="tk" type="time" value="${esc((C().tenko||'6:00').padStart(5,'0'))}" data-tk="${m.id}">`;
+  if(m.kind==='garage'){ const cur=m.day||(m.texts[0].match(/車庫着(.+?)、/)||[])[1]||'明日';
+    h+=`<label>次に行く日（休みの前は変える）</label><div class="chips">${['明日','月曜日','火曜日','水曜日','木曜日','金曜日'].map(x=>`<button class="chip${x===cur?' on':''}" data-day="${x}" data-mid="${m.id}">${x}</button>`).join('')}</div>`; }
+  if(m.kind==='garage') h+=`<label>点呼の時刻</label><input id="tk" type="time" value="${esc((C().tenko||'6:00').padStart(5,'0'))}" data-tk="${m.id}">`;
   m.texts.forEach((x,i)=>h+=`<p><b>${esc(x)}</b></p><button class="btn line" data-send="${m.id}" data-i="${i}" style="margin-bottom:6px">LINE で送る</button>`);
   return h+`<div class="two"><button class="btn sm" data-go="compose" data-a='${JSON.stringify({mid:m.id})}'>文を変える</button><button class="btn sm ghost" data-mark="${m.id}">送った</button></div><p style="margin:6px 0 0"><button class="btn sm ghost" data-skip="${m.id}">送らない</button></p></div>`;
 }
@@ -402,11 +423,14 @@ document.addEventListener('click',e=>{
   if(d.unmark!=null){ A.msgMark(+d.unmark,false); load(true); render(); return; }
   if(d.skip!=null){ patch('msgs',+d.skip,{skip:true}); render(); return; }
   if(d.ins!=null){ const tx=$('tx'); tx.value+=d.ins; return; }
-  if(d.put!=null){ $('tx').value=(C().phrases||['洗車＆給油完了しました！'])[+d.put]; return; }
-  if(d.plan!=null){ const c=C(); c.plan=d.plan; c.planDay=d.plan?today():''; confSave(c); render(); return; }
+  if(d.put!=null){ $('tx').value=(C().phrases||PHRASES.slice())[+d.put]; return; }
+  if(d.plan!=null){ const c=C(); let P=plansToday().slice(); if(!d.plan) P=[]; else if(P.includes(d.plan)) P=P.filter(x=>x!==d.plan); else P.push(d.plan);
+    c.plans=P; c.plan=''; c.planDay=P.length?today():''; confSave(c); if(HAS&&A.doneRefresh){ A.doneRefresh(); load(true); } render(); return; }
+  if(d.wash!=null){ const text=d.wash; const id=T().active?add('msgs',{kind:'wash',vid:-1,texts:[text],ts:Date.now(),sent:false,posted:true}):-1; send(text,id); go('home'); return; }
+  if(d.day!=null){ const mid=+d.mid; patch('msgs',mid,{texts:[garageText(d.day)],day:d.day}); render(); return; }
   if(d.round){ const c=C(); c.round=d.round; confSave(c); render(); return; }
   if(d.stop!=null){ stopAct(+d.stop,d.how); return; }
-  if(d.ph!=null){ const c=C(); const ph=(c.phrases||['洗車＆給油完了しました！']).slice(), i=+d.ph; if(d.how==='del') ph.splice(i,1); else if(i>0) [ph[i-1],ph[i]]=[ph[i],ph[i-1]]; c.phrases=ph; confSave(c); render(); return; }
+  if(d.ph!=null){ const c=C(); const ph=(c.phrases||PHRASES.slice()).slice(), i=+d.ph; if(d.how==='del') ph.splice(i,1); else if(i>0) [ph[i-1],ph[i]]=[ph[i],ph[i-1]]; c.phrases=ph; confSave(c); render(); return; }
   if(d.cdir!=null){ const vid=arg; cargoEdit(vid,o=>o.cargo[+d.cdir].dir=d.v); return; }
   if(d.cunit!=null){ const vid=arg; cargoEdit(vid,o=>o.cargo[+d.cunit].unit=d.v); return; }
   if(d.kpt!=null){ KP.i=d.kpt==='m'?'m':+d.kpt; render(); return; }
@@ -416,11 +440,12 @@ document.addEventListener('click',e=>{
   if(act==='start'){ const c=C(); A.tripStart(+(c.car||(c.cars||[6,8])[0])); return; }
   if(act==='carAdd'){ const n=prompt('車番（数字）'); if(n&&/^\d+$/.test(n)){ const c=C(); c.cars=[...new Set([...(c.cars||[6,8]),+n])].sort((a,b)=>a-b); c.car=+n; confSave(c); render(); } return; }
   if(act==='end'){ const un=unsent(); if(!confirm((un.length?`未送信の連絡が${un.length}件あります。\n`:'')+'今日の記録を止めますか？（あとで［出庫］を押すと続きから記録できます）')) return; A.tripStop(); setTimeout(()=>{ load(true); render(); },500); return; }
-  if(act==='wash'){ const text='洗車＆給油完了しました！'; const id=T().active?add('msgs',{kind:'wash',vid:-1,texts:[text],ts:Date.now(),sent:false,posted:true}):-1; send(text,id); return; }
-  if(act==='planSend'){ const text=`午後は${planToday()}、納品引き取りになります！`; const id=T().active?add('msgs',{kind:'plan',vid:-1,texts:[text],ts:Date.now(),sent:false,posted:true}):-1; send(text,id); return; }
+  if(act==='wash'){ go('wash'); return; }
+  if(act==='washOld'){ const text='洗車＆給油完了しました！'; const id=T().active?add('msgs',{kind:'wash',vid:-1,texts:[text],ts:Date.now(),sent:false,posted:true}):-1; send(text,id); return; }
+  if(act==='planSend'){ const R=restPlans(); const text=d.v==='am'?planMsg(R):`午後は${R.join('、')}、納品引き取りになります！`; const id=T().active?add('msgs',{kind:'plan',vid:-1,texts:[text],ts:Date.now(),sent:false,posted:true}):-1; send(text,id); return; }
   if(act==='txClear'){ $('tx').value=''; return; }
   if(act==='txBs'){ const tx=$('tx'); const all=NAMES.map(SHORT).concat(WORDS,places().map(p=>p.name)).sort((a,b)=>b.length-a.length); const w=all.find(x=>tx.value.endsWith(x)); tx.value=w?tx.value.slice(0,-w.length):tx.value.slice(0,-1); return; }
-  if(act==='phAdd'){ const v=$('tx').value.trim(); if(!v) return; const c=C(); const ph=c.phrases||['洗車＆給油完了しました！']; if(!ph.includes(v)) ph.push(v); c.phrases=ph; confSave(c); toast('「よく使う文」に登録しました'); render(); return; }
+  if(act==='phAdd'){ const v=$('tx').value.trim(); if(!v) return; const c=C(); const ph=c.phrases||PHRASES.slice(); if(!ph.includes(v)) ph.push(v); c.phrases=ph; confSave(c); toast('「よく使う文」に登録しました'); render(); return; }
   if(act==='txSend'){ const v=$('tx').value.trim(); if(!v) return; let mid=d.mid?+d.mid:null;
     if(mid!=null){ const m=(T().msgs||[]).find(x=>x.id===mid); patch('msgs',mid,{texts:[v].concat((m?m.texts:[]).filter(x=>x!==v)),edited:true}); }
     else if(T().active) mid=add('msgs',{kind:'manual',vid:-1,texts:[v],ts:Date.now(),sent:false,posted:true});
@@ -435,14 +460,14 @@ document.addEventListener('click',e=>{
   if(act==='cAdd'){ cargoEdit(arg,o=>o.cargo.push({dir:'in',n:'',unit:'PL'})); KP.i=((T().visits||[]).find(x=>x.id===arg)?.cargo||[]).length-1; render(); return; }
   if(act==='cDel'){ cargoEdit(arg,o=>{ if(o.cargo.length>1) o.cargo.pop(); else o.cargo=[{dir:'out',n:'',unit:'台'}]; }); KP.i=0; render(); return; }
   if(act==='pHere'){ const n=$('pName').value.trim(); if(!n){ $('pMsg').textContent='先に名前を入れてください'; return; } getFix(f=>{ const id='p'+Date.now(); const c=C(); c.places=(c.places||[]).concat([{id,name:n,lat:f.lat,lon:f.lon,...defaults(n)}]); confSave(c); toast(`「${esc(n)}」を登録しました（位置のずれ ±${Math.round(f.acc)}m）。文と半径を確かめてください。`,6000); go('place',id); }); return; }
-  if(act==='eSave'){ const c=C(); const p=(c.places||[]).find(x=>x.id===d.id); if(!p) return; p.name=$('eName').value.trim()||p.name; p.type=$('eType').value; p.r=Math.max(20,Math.min(500,+$('eR').value||60)); p.arrText=$('eArr').value.trim(); p.doneTexts=$('eDone').value.split('\n').map(s=>s.trim()).filter(Boolean); confSave(c); toast('保存しました'); go('places'); return; }
+  if(act==='eSave'){ const c=C(); const p=(c.places||[]).find(x=>x.id===d.id); if(!p) return; p.name=$('eName').value.trim()||p.name; p.type=$('eType').value; p.r=Math.max(20,Math.min(500,+$('eR').value||60)); p.arrText=$('eArr').value.trim(); p.doneTexts=$('eDone').value.split('\n').map(s=>s.trim()).filter(Boolean); if($('eBefore')) p.beforeTexts=$('eBefore').value.split('\n').map(s=>s.trim()).filter(Boolean); confSave(c); toast('保存しました'); go('places'); return; }
   if(act==='eMove'){ getFix(f=>{ const c=C(); const p=(c.places||[]).find(x=>x.id===d.id); if(!p) return; p.lat=f.lat; p.lon=f.lon; confSave(c); toast(`中心を移しました（ずれ ±${Math.round(f.acc)}m）`); render(); }); return; }
   if(act==='eDel'){ if(!confirm('この場所を消しますか？')) return; const c=C(); c.places=(c.places||[]).filter(x=>x.id!==d.id); confSave(c); go('places'); return; }
   if(act==='toNippo'){ toNippo(); return; }
 });
 document.addEventListener('change',e=>{
   const el=e.target;
-  if(el.dataset.tk){ const c=C(); c.tenko=el.value.replace(/^0/,''); confSave(c); const mid=+el.dataset.tk; patch('msgs',mid,{texts:[`お疲れ様です！車庫着明日、点呼${c.tenko}です！`]}); render(); }
+  if(el.dataset.tk){ const c=C(); c.tenko=el.value.replace(/^0/,''); confSave(c); const mid=+el.dataset.tk; const m=(T().msgs||[]).find(x=>x.id===mid); patch('msgs',mid,{texts:[garageText(m&&m.day||((m&&m.texts[0].match(/車庫着(.+?)、/))||[])[1]||'明日',c.tenko)]}); render(); }
 });
 
 // 場所の登録：GPS の位置を1回取る（ずれが50mより大きければ、もう少し待つ）
