@@ -64,6 +64,11 @@ const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + wha
   const info = await c.ev(`(()=>{ window.__st=[]; window.onTripStarted=r=>window.__st.push(r); return JSON.stringify({avail:NippoAndroid.tripAvailable(), save:NippoAndroid.confSave(${JSON.stringify(JSON.stringify(conf))})}); })()`);
   console.log('SETUP', info);
   check(JSON.parse(info).avail === true && JSON.parse(info).save === true, '運行連絡が使える・設定を保存できた');
+  // ---- 帰庫の連絡の「次に行く日」：土日と国民の祝日・休日（内閣府の一覧）を飛ばす ----
+  const ND = { '2026-11-19': '明日', '2026-11-20': '火曜日', '2026-11-24': '明日', '2026-12-31': '月曜日', '2026-05-01': '木曜日', '2027-03-19': '火曜日', '2026-09-18': '木曜日', '2026-11-02': '水曜日' };
+  const gotND = {}; for (const d of Object.keys(ND)) gotND[d] = await c.ev(`NippoAndroid.nextWorkDay('${d}')`);
+  check(Object.keys(ND).every(d => gotND[d] === ND[d]), '次に行く日（11/20金→祝日11/23を飛ばして火曜日、など8件）', gotND);
+  await sleep(8000); console.log('INFO 祝日の一覧（件数 取り直したCSVの大きさ）', await c.ev('NippoAndroid.holidayInfo()'));
 
   // ---- 出庫 ----
   await c.ev('NippoAndroid.tripStart(8)');
