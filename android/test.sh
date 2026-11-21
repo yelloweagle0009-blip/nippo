@@ -35,9 +35,23 @@ if [ $RC -eq 0 ]; then
   adb shell svc data enable
 fi
 adb exec-out screencap -p > out/shot2.png
+# ---- 運行連絡：作った道順の位置（GPS）を流して、着いた・出た・LINE の文・自動で止まるを確かめる ----
+adb shell pm grant jp.nippo.unkou android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant jp.nippo.unkou android.permission.ACCESS_COARSE_LOCATION
+adb shell pm grant jp.nippo.unkou android.permission.POST_NOTIFICATIONS
+adb shell am start -W -n jp.nippo.unkou/.MainActivity
+sleep 5
+node android/test-trip.js > out/test-trip.txt 2>&1; PRC=$?
+cat out/test-trip.txt
+grep -q '^PASS' out/test-trip.txt || PRC=9
+[ $RC -eq 0 ] && RC=$PRC
+adb wait-for-device
+adb exec-out screencap -p > out/shot-trip.png
 # ---- 待機アラームだけのアプリ（jp.nippo.taiki） ----
 adb install -r taiki-alarm.apk || exit 1
 adb shell pm grant jp.nippo.taiki android.permission.CAMERA
+# 待機アラームのアプリは位置の許可を持たない（運行連絡は入れていない）
+if adb shell dumpsys package jp.nippo.taiki | grep -q "permission.ACCESS_FINE_LOCATION"; then echo "FAIL: 待機アラームに位置の許可が入っている"; RC=13; else echo "OK   待機アラームに位置の許可は無い"; fi
 adb shell am start -W -n jp.nippo.taiki/jp.nippo.unkou.MainActivity
 sleep 25
 TPID=$(adb shell pidof jp.nippo.taiki | tr -d '\r')
