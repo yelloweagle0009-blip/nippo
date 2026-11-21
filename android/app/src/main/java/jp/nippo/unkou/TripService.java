@@ -285,25 +285,55 @@ public class TripService extends Service {
             boolean first = !t.optBoolean("arrivedFirst");
             t.put("arrivedFirst", true);
             String hm = new java.text.SimpleDateFormat("H:mm", java.util.Locale.JAPAN).format(new java.util.Date(at));
-            if (first && !a.isEmpty()) addMsg(t, "arrive", vid, new String[]{fill(t, p, a)}, p.optString("name") + " " + hm + "着（到着の連絡）", true);
+            String af = a.isEmpty() ? null : fill(this, t, p, a);
+            if (first && af != null) addMsg(t, "arrive", vid, new String[]{af}, p.optString("name") + " " + hm + "着（到着の連絡）", true);
             else postInfo(this, (int) (100 + vid + 50000), p.optString("name") + " " + hm + "着", "荷物の数・メーターは、手が空いたときに入れてください");
             // 完了の連絡は、着いたときに作っておく（場所カードからいつでも送れる）。送らずに出たら通知する
-            String[] dt = doneTexts(t, p);
-            if (dt.length > 0) addMsg(t, "done", vid, dt, p.optString("name") + "（完了の連絡）", false);
+            String[] dt = doneTexts(this, t, p);
+            addMsg(t, "done", vid, dt, p.optString("name") + "（完了の連絡）", false);   // 文が無くても作っておく（あとで予定を入れたら文が入る）
         } else if ("garage".equals(type) && at > 0) {
             // 帰庫：夕方の連絡を作って、記録を止める
-            String tk = TripStore.conf(this).optString("tenko", "6:00");
-            addMsg(t, "garage", vid, new String[]{"お疲れ様です！車庫着明日、点呼" + tk + "です！"}, "車庫に着きました", true);
+            addMsg(t, "garage", vid, new String[]{garageText(TripStore.conf(this))}, "車庫に着きました", true);
             finish(t, "garage");
         }
     }
 
-    String[] doneTexts(JSONObject t, JSONObject p) {
+    // 完了の文。KFK（マシンセンター・甲府南）のように「beforeTexts」を持つ場所は、
+    // その日まだ牧野（勝山・富士吉田）に行っていなければ beforeTexts（朝：予定の連絡）、行った後なら doneTexts（帰り：KFK完了）を使う
+    // （名取さんの LINE 10/28〜11/20：朝マシンセンターを出るときは送らず、牧野の後に KFK を出るとき「KFK完了！帰庫します！」）
+    static String[] doneTexts(Context c, JSONObject t, JSONObject p) {
         JSONArray dt = p.optJSONArray("doneTexts");
+        if (p.has("beforeTexts") && !visitedMakino(t)) dt = p.optJSONArray("beforeTexts");
         java.util.ArrayList<String> L = new java.util.ArrayList<>();
-        String plan = plan(TripStore.conf(this));
-        if (dt != null) for (int i = 0; i < dt.length(); i++) { String s = dt.optString(i); if (s.isEmpty() || (s.contains("{plan}") && plan.isEmpty())) continue; L.add(fill(t, p, s)); }
+        if (dt != null) for (int i = 0; i < dt.length(); i++) { String s = dt.optString(i); if (s.isEmpty()) continue; String f = fill(c, t, p, s); if (f != null) L.add(f); }
         return L.toArray(new String[0]);
+    }
+
+    // 予定を入れ直したとき：いまの場所の、まだ送っていない完了の文を作り直す（画面から呼ぶ）
+    static void refreshDone(Context c) {
+        synchronized (TripStore.LOCK) {
+            try {
+                JSONObject t = TripStore.trip(c), cur = t.optJSONObject("cur");
+                if (cur == null || !cur.optBoolean("arrived")) return;
+                JSONArray ps = TripStore.places(c); JSONObject p = null;
+                for (int i = 0; i < ps.length(); i++) if (cur.optString("pid").equals(ps.getJSONObject(i).optString("id"))) p = ps.getJSONObject(i);
+                if (p == null) return;
+                JSONArray ms = t.getJSONArray("msgs");
+                for (int i = 0; i < ms.length(); i++) {
+                    JSONObject m = ms.getJSONObject(i);
+                    if (m.optLong("vid") != cur.optLong("vid") || !"done".equals(m.optString("kind")) || m.optBoolean("sent") || m.optBoolean("edited")) continue;
+                    JSONArray tx = new JSONArray(); for (String x : doneTexts(c, t, p)) tx.put(x); m.put("texts", tx);
+                }
+                TripStore.saveTrip(c, t);
+            } catch (Exception e) { }
+        }
+    }
+
+    static boolean isMakino(String name) { return name != null && (name.contains("勝山") || name.contains("富士吉田") || name.contains("牧野")); }
+    static boolean visitedMakino(JSONObject t) {
+        JSONArray vs = t.optJSONArray("visits");
+        if (vs != null) for (int i = 0; i < vs.length(); i++) { JSONObject v = vs.optJSONObject(i); if (v != null && v.has("arr") && isMakino(v.optString("name"))) return true; }
+        return false;
     }
 
     void depart(JSONObject t, JSONObject cur, JSONObject p, long at) throws Exception {
@@ -316,19 +346,65 @@ public class TripService extends Service {
         for (int i = 0; i < ms.length(); i++) {
             JSONObject m = ms.getJSONObject(i);
             if (m.optLong("vid") != cur.optLong("vid") || !"done".equals(m.optString("kind")) || m.optBoolean("sent") || m.optBoolean("skip")) continue;
-            if (!m.optBoolean("edited")) { String[] dt = doneTexts(t, p); JSONArray tx = new JSONArray(); for (String x : dt) tx.put(x); if (dt.length > 0) m.put("texts", tx); }
+            if (!m.optBoolean("edited")) { String[] dt = doneTexts(this, t, p); JSONArray tx = new JSONArray(); for (String x : dt) tx.put(x); m.put("texts", tx); }
+            if (m.getJSONArray("texts").length() == 0) { m.put("skip", true); m.put("none", true); continue; }   // 送る文が無い（朝マシンセンターを出た など）
             m.put("posted", true); m.put("postTs", at);
             postMsg(this, m.optLong("id"), p.optString("name") + " を出ました（完了の連絡・未送信）", m.getJSONArray("texts").optString(0));
         }
     }
 
     // 予定（午後の行き先）は、入れた日だけ使う
-    static String plan(JSONObject cf) { return TripStore.today().equals(cf.optString("planDay")) ? cf.optString("plan", "") : ""; }
+    // 今日の予定（行き先。順番どおり。例：富士吉田→勝山）。入れた日だけ使う
+    static java.util.List<String> plans(JSONObject cf) {
+        java.util.ArrayList<String> L = new java.util.ArrayList<>();
+        if (!TripStore.today().equals(cf.optString("planDay"))) return L;
+        JSONArray a = cf.optJSONArray("plans");
+        if (a != null) for (int i = 0; i < a.length(); i++) { String x = a.optString(i); if (!x.isEmpty()) L.add(x); }
+        else if (!cf.optString("plan").isEmpty()) L.add(cf.optString("plan"));
+        return L;
+    }
+    static boolean visitedName(JSONObject t, String x) {
+        JSONArray vs = t.optJSONArray("visits");
+        String alt = "Panasonic".equals(x) ? "パナソニック" : x;
+        if (vs != null) for (int i = 0; i < vs.length(); i++) { JSONObject v = vs.optJSONObject(i); if (v != null && v.has("arr") && (v.optString("name").contains(x) || v.optString("name").contains(alt))) return true; }
+        return false;
+    }
+    // まだ行っていない予定の行き先
+    static java.util.List<String> restPlans(JSONObject t, JSONObject cf) {
+        java.util.ArrayList<String> L = new java.util.ArrayList<>();
+        for (String x : plans(cf)) if (!visitedName(t, x)) L.add(x);
+        return L;
+    }
+    // 朝の予定の連絡（LINE 11/4・11/11・11/13・11/12 の書き方）
+    //  1か所：富士吉田、納品引き取りになります！🚛
+    //  2か所：富士吉田、勝山納品引き取りになります！🚛富士吉田からまわります！
+    static String planMsg(java.util.List<String> P) {
+        if (P.isEmpty()) return "";
+        if (P.size() == 1) return P.get(0) + "、納品引き取りになります！🚛";
+        StringBuilder b = new StringBuilder(P.get(0) + "、");
+        for (int i = 1; i < P.size(); i++) b.append(i > 1 ? "、" : "").append(P.get(i));
+        return b.append("納品引き取りになります！🚛").append(P.get(0)).append("からまわります！").toString();
+    }
+    // 次に行く日（明日／月曜日／火曜日…）。土日は飛ばす。祝日・会社の休みは画面で選び直す
+    static String nextDayWord() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int add = 1; c.add(java.util.Calendar.DAY_OF_MONTH, 1);
+        while (c.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SATURDAY || c.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SUNDAY) { c.add(java.util.Calendar.DAY_OF_MONTH, 1); add++; }
+        if (add == 1) return "明日";
+        return new String[]{"", "日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"}[c.get(java.util.Calendar.DAY_OF_WEEK)];
+    }
+    static String garageText(JSONObject cf) { return "お疲れ様です！車庫着" + nextDayWord() + "、点呼" + cf.optString("tenko", "6:00") + "です！"; }
 
-    String fill(JSONObject t, JSONObject p, String s) {
-        JSONObject cf = TripStore.conf(this);
+    // 文の中の {…} を入れる。入れる値が無い（予定が無い など）ときは null＝その文は出さない
+    static String fill(Context c, JSONObject t, JSONObject p, String s) {
+        JSONObject cf = TripStore.conf(c);
+        java.util.List<String> rest = restPlans(t, cf);
+        rest.remove(p.optString("name"));
+        java.util.List<String> rest2 = new java.util.ArrayList<>(); for (String x : rest) if (!p.optString("name").contains(x)) rest2.add(x);
+        if ((s.contains("{next}") || s.contains("{plan}") || s.contains("{planMsg}")) && rest2.isEmpty()) return null;
         return s.replace("{n}", String.valueOf(t.optJSONObject("counts") != null ? Math.max(1, t.optJSONObject("counts").optInt(p.optString("id"))) : 1))
-                .replace("{name}", p.optString("name")).replace("{plan}", plan(cf)).replace("{car}", String.valueOf(t.optInt("car")))
+                .replace("{name}", p.optString("name")).replace("{next}", rest2.isEmpty() ? "" : rest2.get(0)).replace("{planMsg}", planMsg(rest2))
+                .replace("{plan}", android.text.TextUtils.join("、", rest2)).replace("{car}", String.valueOf(t.optInt("car")))
                 .replace("{tenko}", cf.optString("tenko", "6:00"));
     }
 
@@ -336,7 +412,7 @@ public class TripService extends Service {
         long id = t.optLong("seq", 1); t.put("seq", id + 1);
         JSONArray tx = new JSONArray(); for (String s : texts) tx.put(s);
         t.getJSONArray("msgs").put(new JSONObject().put("id", id).put("kind", kind).put("vid", vid).put("texts", tx).put("ts", System.currentTimeMillis()).put("sent", false).put("posted", post));
-        if (post) postMsg(this, id, title, texts[0]);
+        if (post && texts.length > 0) postMsg(this, id, title, texts[0]);
     }
 
     // 送るボタンの無い知らせ（「〇〇 9:15着」）。開くと場所カード

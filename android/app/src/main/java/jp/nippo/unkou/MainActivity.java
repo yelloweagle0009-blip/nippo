@@ -537,6 +537,9 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void doneRefresh() { if (BuildConfig.TRIP) TripService.refreshDone(MainActivity.this); }
+
+        @JavascriptInterface
         public void msgMark(long mid, boolean sent) { if (BuildConfig.TRIP) SendActivity.mark(MainActivity.this, mid, sent, null); }
 
         // 場所の登録用に位置を1回取る。fixGet() で受け取る（取れるまで ""）
