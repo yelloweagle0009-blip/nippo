@@ -293,7 +293,7 @@ public class TripService extends Service {
             addMsg(t, "done", vid, dt, p.optString("name") + "（完了の連絡）", false);   // 文が無くても作っておく（あとで予定を入れたら文が入る）
         } else if ("garage".equals(type) && at > 0) {
             // 帰庫：夕方の連絡を作って、記録を止める
-            addMsg(t, "garage", vid, new String[]{garageText(TripStore.conf(this))}, "車庫に着きました", true);
+            addMsg(t, "garage", vid, new String[]{garageText(this, TripStore.conf(this))}, "車庫に着きました", true);
             finish(t, "garage");
         }
     }
@@ -385,15 +385,8 @@ public class TripService extends Service {
         for (int i = 1; i < P.size(); i++) b.append(i > 1 ? "、" : "").append(P.get(i));
         return b.append("納品引き取りになります！🚛").append(P.get(0)).append("からまわります！").toString();
     }
-    // 次に行く日（明日／月曜日／火曜日…）。土日は飛ばす。祝日・会社の休みは画面で選び直す
-    static String nextDayWord() {
-        java.util.Calendar c = java.util.Calendar.getInstance();
-        int add = 1; c.add(java.util.Calendar.DAY_OF_MONTH, 1);
-        while (c.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SATURDAY || c.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SUNDAY) { c.add(java.util.Calendar.DAY_OF_MONTH, 1); add++; }
-        if (add == 1) return "明日";
-        return new String[]{"", "日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"}[c.get(java.util.Calendar.DAY_OF_WEEK)];
-    }
-    static String garageText(JSONObject cf) { return "お疲れ様です！車庫着" + nextDayWord() + "、点呼" + cf.optString("tenko", "6:00") + "です！"; }
+    // 次に行く日：土日と国民の祝日・休日（内閣府の一覧）を飛ばす
+    static String garageText(Context c, JSONObject cf) { return "お疲れ様です！車庫着" + Holidays.nextWord(c, java.util.Calendar.getInstance()) + "、点呼" + cf.optString("tenko", "6:00") + "です！"; }
 
     // 文の中の {…} を入れる。入れる値が無い（予定が無い など）ときは null＝その文は出さない
     static String fill(Context c, JSONObject t, JSONObject p, String s) {

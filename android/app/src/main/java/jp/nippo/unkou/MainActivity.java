@@ -167,6 +167,7 @@ public class MainActivity extends Activity {
             }
         });
         web.addJavascriptInterface(new Bridge(), "NippoAndroid");
+        if (BuildConfig.TRIP) Holidays.refresh(this);   // 祝日の一覧を月に1回取り直す
 
         if (state != null) web.restoreState(state);
         else web.loadUrl(pageUrl(getIntent()));
@@ -535,6 +536,15 @@ public class MainActivity extends Activity {
         public void lineSend(String text, long mid) {
             runOnUiThread(() -> SendActivity.openLine(MainActivity.this, text, mid));
         }
+
+        // 次に行く日（試験と画面用）。ymd＝"2026-11-20" の次の運行日
+        @JavascriptInterface
+        public String nextWorkDay(String ymd) {
+            try { String[] p = ymd.split("-"); java.util.Calendar c = java.util.Calendar.getInstance(); c.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]), 12, 0, 0); return Holidays.nextWord(MainActivity.this, c); } catch (Exception e) { return ""; }
+        }
+
+        @JavascriptInterface
+        public String holidayInfo() { java.io.File f = Holidays.file(MainActivity.this); return Holidays.all(MainActivity.this).size() + " " + (f.exists() ? f.length() : 0); }
 
         @JavascriptInterface
         public void doneRefresh() { if (BuildConfig.TRIP) TripService.refreshDone(MainActivity.this); }
