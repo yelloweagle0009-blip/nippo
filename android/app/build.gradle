@@ -20,6 +20,7 @@ android {
             resValue 'string', 'app_name', '運行日報'
             buildConfigField 'String', 'HOME', '"https://yelloweagle0009-blip.github.io/nippo/"'
             buildConfigField 'String', 'UA', '" NippoApp/1"'
+            buildConfigField 'boolean', 'TRIP', 'true'    // 運行連絡あり
         }
         // 待機アラームだけのアプリ（文字を読む部品は入れないので小さい）
         taiki {
@@ -28,6 +29,7 @@ android {
             resValue 'string', 'app_name', '待機アラーム'
             buildConfigField 'String', 'HOME', '"https://yelloweagle0009-blip.github.io/nippo/taiki/"'
             buildConfigField 'String', 'UA', '" TaikiApp/1"'
+            buildConfigField 'boolean', 'TRIP', 'false'   // 運行連絡なし（位置の許可も持たない）
         }
     }
     // 署名の鍵：アプリを更新するとき、前と同じ鍵でないと上書きで入れられない（入れ直すとデータが消える）。
