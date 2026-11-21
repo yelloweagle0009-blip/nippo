@@ -400,7 +400,7 @@ function msgBox(m){
   const v=(T().visits||[]).find(x=>x.id===m.vid);
   let h=`<div class="msg"><p class="sub">${v?esc(v.name)+'　':''}${hmOf(m.postTs||m.ts)}</p>`;
   if(m.kind==='garage'){ const cur=m.day||(m.texts[0].match(/車庫着(.+?)、/)||[])[1]||'明日';
-    h+=`<label>次に行く日（休みの前は変える）</label><div class="chips">${['明日','月曜日','火曜日','水曜日','木曜日','金曜日'].map(x=>`<button class="chip${x===cur?' on':''}" data-day="${x}" data-mid="${m.id}">${x}</button>`).join('')}</div>`; }
+    h+=`<label>次に行く日（土日・祝日は自動で飛ばしています。会社の休みが違うときだけ変える）</label><div class="chips">${[...new Set([cur,'明日','月曜日','火曜日','水曜日','木曜日','金曜日'])].map(x=>`<button class="chip${x===cur?' on':''}" data-day="${x}" data-mid="${m.id}">${x}</button>`).join('')}</div>`; }
   if(m.kind==='garage') h+=`<label>点呼の時刻</label><input id="tk" type="time" value="${esc((C().tenko||'6:00').padStart(5,'0'))}" data-tk="${m.id}">`;
   m.texts.forEach((x,i)=>h+=`<p><b>${esc(x)}</b></p><button class="btn line" data-send="${m.id}" data-i="${i}" style="margin-bottom:6px">LINE で送る</button>`);
   return h+`<div class="two"><button class="btn sm" data-go="compose" data-a='${JSON.stringify({mid:m.id})}'>文を変える</button><button class="btn sm ghost" data-mark="${m.id}">送った</button></div><p style="margin:6px 0 0"><button class="btn sm ghost" data-skip="${m.id}">送らない</button></p></div>`;
