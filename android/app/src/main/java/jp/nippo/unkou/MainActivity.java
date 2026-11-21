@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     static final int REQ_CAM_PHOTO = 3;
     static final int REQ_LOC = 4;
     int pendingCar = -1;          // 位置の許可を待っているあいだの「出庫」（車番）
+    boolean pendingFix = false;   // 位置の許可を待っているあいだの「場所の登録」
     volatile String oneFix = "";  // 場所の登録用に、いま1回だけ取った位置
     Intent camIntent;   // カメラの許可を待っているあいだの「写真を撮る」
     PermissionRequest camReq;   // 待機アラームのカメラの許可待ち
@@ -196,7 +197,8 @@ public class MainActivity extends Activity {
         // 記録中のはずなのに止まっていた（スマホが止めた・電池切れのあと）：開き直したら続ける
         try {
             org.json.JSONObject t = TripStore.trip(this);
-            if (t.optBoolean("active") && !TripService.running && hasLoc()) TripService.start(this, t.optInt("car"));
+            if (t.optBoolean("active") && !TripStore.today().equals(t.optString("day"))) TripService.stop(this, "nextday");   // 前の日の記録は続けない（朝の［出庫］で新しい1日）
+            else if (t.optBoolean("active") && !TripService.running && hasLoc()) TripService.start(this, t.optInt("car"));
         } catch (Exception e) { }
         if (web != null) web.evaluateJavascript("window.onAppResume&&window.onAppResume()", null);
     }
@@ -300,6 +302,8 @@ public class MainActivity extends Activity {
         boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
         if (req == REQ_LOC) {
             boolean loc = hasLoc();
+            if (loc && pendingFix) fixOnce();
+            pendingFix = false;
             if (loc && pendingCar >= 0) startTrip(pendingCar);
             else if (!loc) js("window.onTripStarted&&window.onTripStarted('denied')");
             pendingCar = -1;
@@ -539,7 +543,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void fixStart() {
             if (!BuildConfig.TRIP) return;
-            runOnUiThread(() -> { if (askLoc()) fixOnce(); });
+            runOnUiThread(() -> { if (askLoc()) fixOnce(); else pendingFix = true; });
         }
 
         @JavascriptInterface

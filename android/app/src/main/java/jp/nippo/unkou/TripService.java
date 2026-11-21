@@ -51,7 +51,10 @@ public class TripService extends Service {
         boolean resume = false;
         synchronized (TripStore.LOCK) { JSONObject t = TripStore.trip(c);
         try {
-            if (t.optBoolean("active")) resume = true;
+            if (t.optBoolean("active") && !TripStore.today().equals(t.optString("day"))) {   // 前の日の記録が止まらずに残っていた
+                t.put("active", false); t.put("endWhy", "nextday"); TripStore.archive(c, t);
+                t = newDay(car); TripStore.saveTrip(c, t);
+            } else if (t.optBoolean("active")) resume = true;
             else if (TripStore.today().equals(t.optString("day")) && t.has("startTs")) {
                 resume = true; t.put("active", true); t.remove("endTs"); t.remove("endWhy"); t.remove("lastFix"); t.remove("anchor"); t.put("car", car);
                 // 昼に車庫へ戻って止まったあと：その車庫の行の続きにする（車庫を出たら、その行の「発」になる。すぐ止まらないように）
@@ -62,16 +65,21 @@ public class TripService extends Service {
                 TripStore.saveTrip(c, t);
             } else {
                 if (t.has("startTs")) TripStore.archive(c, t);
-                t = new JSONObject();
-                t.put("active", true); t.put("car", car); t.put("day", TripStore.today()); t.put("startTs", System.currentTimeMillis());
-                t.put("visits", new JSONArray()); t.put("msgs", new JSONArray()); t.put("stops", new JSONArray()); t.put("gaps", new JSONArray()); t.put("counts", new JSONObject());
-                t.put("arrivedFirst", false); t.put("seq", 1);
+                t = newDay(car);
                 TripStore.saveTrip(c, t);
             }
         } catch (Exception e) { } }
         Intent i = new Intent(c, TripService.class);
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
         return resume;
+    }
+
+    static JSONObject newDay(int car) throws Exception {
+        JSONObject t = new JSONObject();
+        t.put("active", true); t.put("car", car); t.put("day", TripStore.today()); t.put("startTs", System.currentTimeMillis());
+        t.put("visits", new JSONArray()); t.put("msgs", new JSONArray()); t.put("stops", new JSONArray()); t.put("gaps", new JSONArray()); t.put("counts", new JSONObject());
+        t.put("arrivedFirst", false); t.put("seq", 1);
+        return t;
     }
 
     static void stop(Context c, String why) {
@@ -147,11 +155,12 @@ public class TripService extends Service {
         if (!t.optBoolean("active")) { stopSelf(); return; }
         try {
             JSONObject lf = t.optJSONObject("lastFix");
+            long prevTs = lf != null ? lf.optLong("ts") : 0;
             if (lf != null && now - lf.optLong("ts") > TripStore.param(this, "gapSec", 300) * 1000)
             { addGap(t, lf.optLong("ts"), now);   // 長く位置が来なかった（トンネルなど）
               JSONObject cd = t.optJSONObject("cand"); if (cd != null) { closeStop(t, cd, now); t.remove("cand"); } }   // その間どこにいたか分からないので、止まった所の数え直し
             t.put("lastFix", new JSONObject().put("lat", l.getLatitude()).put("lon", l.getLongitude()).put("acc", l.hasAccuracy() ? l.getAccuracy() : -1).put("ts", now));
-            process(t, l.getLatitude(), l.getLongitude(), now);
+            process(t, l.getLatitude(), l.getLongitude(), now, prevTs);
             TripStore.saveTrip(this, t);
         } catch (Exception e) { }
     }
@@ -163,7 +172,7 @@ public class TripService extends Service {
         JSONObject lf = t.optJSONObject("lastFix");
         long now = System.currentTimeMillis();
         if (lf == null || now - lf.optLong("ts") > TripStore.param(this, "freshSec", 60) * 1000) return;   // 位置が古い：決めずに待つ
-        try { process(t, lf.getDouble("lat"), lf.getDouble("lon"), now); TripStore.saveTrip(this, t); } catch (Exception e) { }
+        try { process(t, lf.getDouble("lat"), lf.getDouble("lon"), now, 0); TripStore.saveTrip(this, t); } catch (Exception e) { }
     }
 
     // 位置が分からない時間を足す。同じ所から始まる時間がもうあれば（開き直したときに記録済み）、終わりを延ばすだけにする
@@ -179,10 +188,13 @@ public class TripService extends Service {
         return null;
     }
 
-    void process(JSONObject t, double lat, double lon, long now) throws Exception {
+    // prevTs：ひとつ前の位置の時刻（5秒ごとの見直しのときは 0）
+    void process(JSONObject t, double lat, double lon, long now, long prevTs) throws Exception {
         if (!t.optBoolean("active")) return;
         JSONArray ps = TripStore.places(this);
         double dwell = TripStore.param(this, "dwellSec", 120) * 1000, exit = TripStore.param(this, "exitSec", 60) * 1000, far = TripStore.param(this, "farM", 300);
+        double pad = TripStore.param(this, "exitPad", 30);   // 着いたあとは、円より30m外に出るまで「出た」にしない（止まっていても位置が数十m揺れるため）
+        boolean wasLost = prevTs > 0 && now - prevTs > TripStore.param(this, "freshSec", 60) * 1000;   // この位置の前に、しばらく位置が来なかった
         // いちばん中心に近い、円の中の場所（隣どうしの円が重なっても1つに決まる）
         JSONObject in = null; double best = 1e18;
         for (int i = 0; i < ps.length(); i++) { JSONObject p = ps.getJSONObject(i); double d = TripStore.dist(lat, lon, p.getDouble("lat"), p.getDouble("lon")); if (d <= p.optDouble("r", 60) && d < best) { best = d; in = p; } }
@@ -193,13 +205,20 @@ public class TripService extends Service {
             if (p == null) { t.remove("cur"); cur = null; }
             else {
                 double d = TripStore.dist(lat, lon, p.getDouble("lat"), p.getDouble("lon"));
-                boolean inside = d <= p.optDouble("r", 60) && (in == null || in.optString("id").equals(p.optString("id")));
+                double r = p.optDouble("r", 60) + (cur.optBoolean("arrived") && in == null ? pad : 0);
+                boolean inside = d <= r && (in == null || in.optString("id").equals(p.optString("id")));
                 if (inside) {
                     cur.remove("outSince");
                     if (!cur.optBoolean("arrived") && now - cur.optLong("enter") >= dwell) arrive(t, cur, p, cur.optLong("enter"));
+                } else if (!cur.optBoolean("arrived") && wasLost && now - cur.optLong("enter") >= dwell) {
+                    // 円に入ったあと建物の中などで位置が来なくなり、次に来た位置はもう外：その間そこにいたとみなして行にする（時刻は要確認の印）
+                    arrive(t, cur, p, cur.optLong("enter"));
+                    markUnsure(t, cur.optLong("vid"));
+                    if (!t.optBoolean("active")) return;
+                    leftAt = prevTs; depart(t, cur, p, prevTs); t.remove("cur"); cur = null;
                 } else if (!cur.optBoolean("arrived")) { t.remove("cur"); cur = null; }   // 止まらずに通り過ぎた
                 else {
-                    if (!cur.has("outSince")) cur.put("outSince", now);
+                    if (!cur.has("outSince")) { cur.put("outSince", wasLost ? prevTs : now); if (wasLost) markUnsure(t, cur.optLong("vid")); }   // 位置が来ない間に出ていた：最後に中にいた時刻を「発」にする
                     if (d > far || now - cur.optLong("outSince") >= exit) { leftAt = cur.optLong("outSince"); depart(t, cur, p, leftAt); t.remove("cur"); cur = null; }
                 }
             }
@@ -238,6 +257,11 @@ public class TripService extends Service {
         if (cur == null && now - an.optLong("ts") >= TripStore.param(this, "idleSec", 10800) * 1000) { finish(t, "idle"); }
         // 1日が長すぎる（18時間）→ 止める
         if (now - t.optLong("startTs") > 18L * 3600000L) finish(t, "long");
+    }
+
+    static void markUnsure(JSONObject t, long vid) throws Exception {
+        JSONArray vs = t.getJSONArray("visits");
+        for (int i = 0; i < vs.length(); i++) { JSONObject v = vs.getJSONObject(i); if (v.optLong("id") == vid) v.put("unsure", true); }
     }
 
     void closeStop(JSONObject t, JSONObject cand, long now) throws Exception {
