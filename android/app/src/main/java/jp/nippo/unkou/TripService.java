@@ -96,7 +96,7 @@ public class TripService extends Service {
             running = true;
             // 止まっていた間（電池切れ・アプリが止められた）を「不明」として残す
             try { JSONObject lf = t.optJSONObject("lastFix"); long now = System.currentTimeMillis();
-                if (lf != null && now - lf.optLong("ts") > TripStore.param(this, "gapSec", 300) * 1000) { t.getJSONArray("gaps").put(new JSONObject().put("from", lf.optLong("ts")).put("to", now)); TripStore.saveTrip(this, t); } } catch (Exception e) { }
+                if (lf != null && now - lf.optLong("ts") > TripStore.param(this, "gapSec", 300) * 1000) { addGap(t, lf.optLong("ts"), now); TripStore.saveTrip(this, t); } } catch (Exception e) { }
             lm = (LocationManager) getSystemService(LOCATION_SERVICE);
             try { lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0f, ll, Looper.getMainLooper()); } catch (Exception e) { }
             try { if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 10000, 0f, ll, Looper.getMainLooper()); } catch (Exception e) { }
@@ -148,7 +148,7 @@ public class TripService extends Service {
         try {
             JSONObject lf = t.optJSONObject("lastFix");
             if (lf != null && now - lf.optLong("ts") > TripStore.param(this, "gapSec", 300) * 1000)
-            { t.getJSONArray("gaps").put(new JSONObject().put("from", lf.optLong("ts")).put("to", now));   // 長く位置が来なかった（トンネルなど）
+            { addGap(t, lf.optLong("ts"), now);   // 長く位置が来なかった（トンネルなど）
               JSONObject cd = t.optJSONObject("cand"); if (cd != null) { closeStop(t, cd, now); t.remove("cand"); } }   // その間どこにいたか分からないので、止まった所の数え直し
             t.put("lastFix", new JSONObject().put("lat", l.getLatitude()).put("lon", l.getLongitude()).put("acc", l.hasAccuracy() ? l.getAccuracy() : -1).put("ts", now));
             process(t, l.getLatitude(), l.getLongitude(), now);
@@ -164,6 +164,14 @@ public class TripService extends Service {
         long now = System.currentTimeMillis();
         if (lf == null || now - lf.optLong("ts") > TripStore.param(this, "freshSec", 60) * 1000) return;   // 位置が古い：決めずに待つ
         try { process(t, lf.getDouble("lat"), lf.getDouble("lon"), now); TripStore.saveTrip(this, t); } catch (Exception e) { }
+    }
+
+    // 位置が分からない時間を足す。同じ所から始まる時間がもうあれば（開き直したときに記録済み）、終わりを延ばすだけにする
+    static void addGap(JSONObject t, long from, long to) throws Exception {
+        JSONArray g = t.getJSONArray("gaps");
+        JSONObject last = g.length() > 0 ? g.optJSONObject(g.length() - 1) : null;
+        if (last != null && last.optLong("from") == from) { if (to > last.optLong("to")) last.put("to", to); }
+        else g.put(new JSONObject().put("from", from).put("to", to));
     }
 
     JSONObject placeById(JSONArray ps, String id) {
