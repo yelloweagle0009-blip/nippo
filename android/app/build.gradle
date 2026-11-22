@@ -21,6 +21,14 @@ android {
             buildConfigField 'String', 'HOME', '"https://yelloweagle0009-blip.github.io/nippo/"'
             buildConfigField 'String', 'UA', '" NippoApp/1"'
         }
+        // LINE連絡キーボード（会社の LINE の入力欄に、次に送る文の選択肢を出す。インターネットの許可は持たない）
+        renraku {
+            dimension 'app'
+            applicationId 'jp.nippo.renraku'
+            resValue 'string', 'app_name', 'LINE連絡'
+            buildConfigField 'String', 'HOME', '""'
+            buildConfigField 'String', 'UA', '""'
+        }
         // 待機アラームだけのアプリ（文字を読む部品は入れないので小さい）
         taiki {
             dimension 'app'
