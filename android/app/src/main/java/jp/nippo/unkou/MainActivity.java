@@ -84,7 +84,29 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
-        setContentView(web);
+        // Android 15 以降を対象にしたアプリ（Google Play 版の待機アラーム）を Android 15 以降の端末で開くと、画面が上下の帯（時計・戻るボタン）の下まで広がる。
+        // ページが帯に隠れないように、帯の分だけ内側に寄せる。帯の後ろはページと同じ色にする
+        if (Build.VERSION.SDK_INT >= 35 && getApplicationInfo().targetSdkVersion >= 35) {   // 広がるのは Android 15 以降の端末だけ
+            final boolean dark = BuildConfig.HOME.contains("/taiki/");
+            android.widget.FrameLayout box = new android.widget.FrameLayout(this);
+            box.setBackgroundColor(dark ? 0xFF0D0A14 : 0xFFF5F2FA);
+            box.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+            setContentView(box);
+            box.setOnApplyWindowInsetsListener((v, ins) -> {
+                android.graphics.Insets b = ins.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+                android.graphics.Insets k = ins.getInsets(android.view.WindowInsets.Type.ime());
+                v.setPadding(b.left, b.top, b.right, Math.max(b.bottom, k.bottom));
+                return android.view.WindowInsets.CONSUMED;
+            });
+            if (getWindow().getInsetsController() != null)   // 暗い画面では、時計などの文字を白にする
+                getWindow().getInsetsController().setSystemBarsAppearance(dark ? 0 : android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        } else setContentView(web);
+        // Android 16 以降を対象にしたアプリでは「戻る」の知らせ方が変わるので、新しい方法でも受け取る（ページを1つ戻る／戻れなければ閉じる）
+        if (Build.VERSION.SDK_INT >= 33 && getApplicationInfo().targetSdkVersion >= 36)
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> {
+                if (web.canGoBack()) web.goBack(); else finish();
+            });
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
