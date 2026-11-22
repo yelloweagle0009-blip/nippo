@@ -4,7 +4,7 @@ name: android
 on:
   workflow_dispatch:
   push:
-    paths: ['android/**', '.github/workflows/android.yml', 'taiki/icon-512.png']
+    paths: ['android/**', '.github/workflows/android.yml', 'taiki/icon-512.png', 'renraku/icon-512.png']
   schedule:
     - cron: '17 3 * * 1'   # 毎週月曜：署名の鍵の保管が期限切れ（7日間使わないと消える）にならないように取り出すだけ
 permissions:
@@ -69,21 +69,23 @@ jobs:
       - name: 部品とアイコンをアプリに入れる
         run: |
           # 文字を読む部品は運行日報だけに入れる（待機アラームには要らないので入れない）
-          mkdir -p android/app/src/nippo/assets/m android/app/src/nippo/res/mipmap-xxxhdpi android/app/src/taiki/res/mipmap-xxxhdpi
+          mkdir -p android/app/src/nippo/assets/m android/app/src/nippo/res/mipmap-xxxhdpi android/app/src/taiki/res/mipmap-xxxhdpi android/app/src/renraku/res/mipmap-xxxhdpi
           cp m/*.onnx m/ppocr*.txt m/*.js m/*.mjs m/*.wasm android/app/src/nippo/assets/m/
           cp icon-512.png android/app/src/nippo/res/mipmap-xxxhdpi/ic_launcher.png
           cp taiki/icon-512.png android/app/src/taiki/res/mipmap-xxxhdpi/ic_launcher.png
+          cp renraku/icon-512.png android/app/src/renraku/res/mipmap-xxxhdpi/ic_launcher.png
           ls -la android/app/src/nippo/assets/m
       - name: ビルド
         working-directory: android
         env:
           NIPPO_VCODE: ${{ github.run_number }}
           NIPPO_VNAME: 1.${{ github.run_number }}
-        run: gradle assembleNippoRelease assembleTaikiRelease --no-daemon --stacktrace
+        run: gradle assembleNippoRelease assembleTaikiRelease assembleRenrakuRelease --no-daemon --stacktrace
       - run: |
           cp android/app/build/outputs/apk/nippo/release/app-nippo-release.apk unkou-nippo.apk
           cp android/app/build/outputs/apk/taiki/release/app-taiki-release.apk taiki-alarm.apk
-          ls -la unkou-nippo.apk taiki-alarm.apk && sha256sum unkou-nippo.apk taiki-alarm.apk
+          cp android/app/build/outputs/apk/renraku/release/app-renraku-release.apk renraku-line.apk
+          ls -la unkou-nippo.apk taiki-alarm.apk renraku-line.apk && sha256sum unkou-nippo.apk taiki-alarm.apk renraku-line.apk
       - uses: actions/upload-artifact@v4
         with: { name: apk, path: "*.apk" }
   test:
@@ -128,6 +130,8 @@ jobs:
           gh release create app unkou-nippo.apk --repo "${{ github.repository }}" --title "運行日報 Android版 1.${{ github.run_number }}" --notes "スマホで開いて unkou-nippo.apk を押すと入れられます。文字を読む部品はアプリの中に入っているので、ダウンロードはありません。前の版が入っているスマホは、そのまま上書きで入ります（データは消えません）。"
           gh release delete taiki --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create taiki taiki-alarm.apk --repo "${{ github.repository }}" --latest=false --title "待機アラーム Android版 1.${{ github.run_number }}" --notes "荷卸場で並んで待つとき、前のトラックが動き出したら目覚ましと同じ音で知らせるアプリです。スマホでこのページを開いて taiki-alarm.apk を押すと入れられます（「提供元不明のアプリ」の確認が出たら許可してください）。iPhone などは https://yelloweagle0009-blip.github.io/nippo/taiki/ を開いて使えます。"
+          gh release delete renraku --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create renraku renraku-line.apk --repo "${{ github.repository }}" --latest=false --title "LINE連絡キーボード Android版 1.${{ github.run_number }}" --notes "会社の LINE の入力欄の下に、次に送る文の選択肢を出すキーボードです。スマホでこのページを開いて renraku-line.apk を押すと入れられます。インターネットの許可は持っていません。"
       - name: 鍵の指紋を記録する（次から別の鍵で作られるのを防ぐため。指紋は公開してよい情報）
         if: needs.build.outputs.newmark == '1'
         run: |
