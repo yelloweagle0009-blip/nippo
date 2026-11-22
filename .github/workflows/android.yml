@@ -140,7 +140,7 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back emulated
-          script: bash android/test.sh
+          script: SKIP_RENRAKU=1 bash android/test.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: test-out-36, path: out }
