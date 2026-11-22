@@ -65,7 +65,7 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: '8.9' }
+        with: { gradle-version: '8.11.1' }
       - name: 部品とアイコンをアプリに入れる
         run: |
           # 文字を読む部品は運行日報だけに入れる（待機アラームには要らないので入れない）
@@ -80,14 +80,15 @@ jobs:
         env:
           NIPPO_VCODE: ${{ github.run_number }}
           NIPPO_VNAME: 1.${{ github.run_number }}
-        run: gradle assembleNippoRelease assembleTaikiRelease assembleRenrakuRelease --no-daemon --stacktrace
+        run: gradle assembleNippoRelease assembleTaikiRelease assembleRenrakuRelease bundleTaikiRelease --no-daemon --stacktrace
       - run: |
           cp android/app/build/outputs/apk/nippo/release/app-nippo-release.apk unkou-nippo.apk
           cp android/app/build/outputs/apk/taiki/release/app-taiki-release.apk taiki-alarm.apk
           cp android/app/build/outputs/apk/renraku/release/app-renraku-release.apk renraku-line.apk
-          ls -la unkou-nippo.apk taiki-alarm.apk renraku-line.apk && sha256sum unkou-nippo.apk taiki-alarm.apk renraku-line.apk
+          cp android/app/build/outputs/bundle/taikiRelease/app-taiki-release.aab taiki-play.aab   # Google Play に入れる形（AAB）
+          ls -la unkou-nippo.apk taiki-alarm.apk renraku-line.apk taiki-play.aab && sha256sum unkou-nippo.apk taiki-alarm.apk renraku-line.apk taiki-play.aab
       - uses: actions/upload-artifact@v4
-        with: { name: apk, path: "*.apk" }
+        with: { name: apk, path: "*.a[pa][kb]" }
   test:
     needs: build
     runs-on: ubuntu-latest
@@ -115,8 +116,36 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: test-out, path: out }
+  # Google Play 版は Android 16（API 36）を対象にしたので、Android 16 のエミュレーターでも同じ試験をする
+  test36:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: apk }
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm i --no-save ws@8.18.0 && mkdir -p out
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back emulated
+          script: bash android/test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: test-out-36, path: out }
   release:
-    needs: [build, test]
+    needs: [build, test, test36]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,7 +158,7 @@ jobs:
           gh release delete app --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create app unkou-nippo.apk --repo "${{ github.repository }}" --title "運行日報 Android版 1.${{ github.run_number }}" --notes "スマホで開いて unkou-nippo.apk を押すと入れられます。文字を読む部品はアプリの中に入っているので、ダウンロードはありません。前の版が入っているスマホは、そのまま上書きで入ります（データは消えません）。"
           gh release delete taiki --repo "${{ github.repository }}" --yes --cleanup-tag || true
-          gh release create taiki taiki-alarm.apk --repo "${{ github.repository }}" --latest=false --title "待機アラーム Android版 1.${{ github.run_number }}" --notes "荷卸場で並んで待つとき、前のトラックが動き出したら目覚ましと同じ音で知らせるアプリです。スマホでこのページを開いて taiki-alarm.apk を押すと入れられます（「提供元不明のアプリ」の確認が出たら許可してください）。iPhone などは https://yelloweagle0009-blip.github.io/nippo/taiki/ を開いて使えます。"
+          gh release create taiki taiki-alarm.apk taiki-play.aab --repo "${{ github.repository }}" --latest=false --title "待機アラーム Android版 1.${{ github.run_number }}" --notes "荷卸場で並んで待つとき、前のトラックが動き出したら目覚ましと同じ音で知らせるアプリです。スマホでこのページを開いて taiki-alarm.apk を押すと入れられます（「提供元不明のアプリ」の確認が出たら許可してください）。iPhone などは https://yelloweagle0009-blip.github.io/nippo/taiki/ を開いて使えます。（taiki-play.aab は Google Play に入れる用のファイルです）"
           gh release delete renraku --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create renraku renraku-line.apk --repo "${{ github.repository }}" --latest=false --title "LINE連絡キーボード Android版 1.${{ github.run_number }}" --notes "会社の LINE の入力欄の下に、次に送る文の選択肢を出すキーボードです。スマホでこのページを開いて renraku-line.apk を押すと入れられます。インターネットの許可は持っていません。"
       - name: 鍵の指紋を記録する（次から別の鍵で作られるのを防ぐため。指紋は公開してよい情報）
