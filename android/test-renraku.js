@@ -8,7 +8,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PKG = 'jp.nippo.renraku', IME = 'jp.nippo.renraku/jp.nippo.unkou.RenrakuIME';
 const fails = [];
 const check = (ok, what, detail) => { console.log((ok ? 'OK   ' : 'NG   ') + what + (detail !== undefined ? '  ' + JSON.stringify(detail) : '')); if (!ok) fails.push(what); };
-const dec = s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#10;/g, '\n');
+const dec = s => s.replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(+n)).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#10;/g, '\n');
 function nodes() {
   adb('shell uiautomator dump /sdcard/ui.xml'); const x = adb('shell cat /sdcard/ui.xml');
   fs.writeFileSync('out/renraku-ui.xml', x);
@@ -57,14 +57,17 @@ const fieldText = () => { const f = nodes().find(n => n.desc === '試す欄'); r
   check(L.some(n => n.text.startsWith('おはようございます!6番出庫します!')), '車番のボタンで 8番→6番 に変わり、文も変わる');
   tap(L.find(n => n.text === '6番')); await sleep(800); L = nodes(); tap(L.find(n => n.text === '2番')); await sleep(800); L = nodes();
   check(L.some(n => n.text === '8番'), '車番は 8→6→2→8 と回る');
+  // 全部の文の一覧が出る → 選択肢に戻る
+  L = nodes(); tap(L.find(n => n.text === '全部の文')); await sleep(1500); L = nodes();
+  const allTexts = L.filter(n => n.cls.includes('Button')).map(n => n.text);
+  check(allTexts.includes('KFK完了！帰庫します！') && allTexts.includes('富士吉田納品完了！引き取り無しです！') && allTexts.includes('選択肢に戻る'), '全部の文の一覧が出る（言い方違いも含む）', allTexts.length + '個');
+  tap(L.find(n => n.text === '選択肢に戻る')); await sleep(1500);
   // 出庫→マシンセンター→Panasonic を続けて入れる
-  tap(L.find(n => n.text.startsWith('おはようございます!8番'))); await sleep(1200);
-  L = nodes(); const all = L.find(n => n.text === '全部の文'); tap(all); await sleep(1500); L = nodes();
-  const allTexts = L.map(n => n.text);
-  check(allTexts.some(t => t === 'マシンセンター到着しました！') && allTexts.some(t => t === '選択肢に戻る'), '全部の文の一覧が出る', allTexts.filter(t => t).slice(0, 12));
-  tap(L.find(n => n.text === 'マシンセンター到着しました！')); await sleep(1200);
+  L = nodes(); tap(L.find(n => n.text.startsWith('おはようございます!8番'))); await sleep(1500);
+  L = nodes(); const mc = L.find(n => n.text === 'マシンセンター到着しました！');
+  check(!!mc, '出庫の次の選択肢に「マシンセンター到着しました！」がある'); tap(mc); await sleep(1500);
   L = nodes(); const top = L.filter(n => n.cls.includes('Button')).map(n => n.text);
-  check(/^Panasonic1回目納品完了しました！$/.test(top.find(t => t.startsWith('Panasonic')) || '') , 'マシンセンターの次は Panasonic1回目', top.slice(0, 6));
+  check(top.includes('Panasonic1回目納品完了しました！'), 'マシンセンターの次は Panasonic1回目', top.slice(0, 6));
   tap(L.find(n => n.text.startsWith('Panasonic1回目'))); await sleep(1200);
   L = nodes(); const top2 = L.filter(n => n.cls.includes('Button')).map(n => n.text);
   check(top2.some(t => t === 'Panasonic2回目納品完了しました！'), 'Panasonic を1回入れたら、次は「Panasonic2回目」', top2.slice(0, 6));
