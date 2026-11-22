@@ -98,9 +98,12 @@ echo "WEBVIEW_TOP=$WTOP  API=$(adb shell getprop ro.build.version.sdk | tr -d '\
 adb exec-out screencap -p > out/shot-taiki-top.png
 [ "${WTOP:-0}" -gt 0 ] || { echo "FAIL: 待機アラームの画面が上の帯に隠れている"; [ $RC -eq 0 ] && RC=15; }
 # ---- LINE連絡キーボード（jp.nippo.renraku） ----
+# Android 16 の試験（Google Play 版の待機アラーム用）では、LINE連絡キーボードは試さない（Google Play には出さないため）
+if [ "$SKIP_RENRAKU" != "1" ]; then
 adb install -r renraku-line.apk || exit 1
 node android/test-renraku.js > out/test-renraku.txt 2>&1
 cat out/test-renraku.txt
 grep -q '^PASS' out/test-renraku.txt || RC=14
+fi
 adb logcat -d -t 400 > out/logcat.txt
 exit $RC
