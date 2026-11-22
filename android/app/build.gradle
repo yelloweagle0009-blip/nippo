@@ -3,7 +3,7 @@
 plugins { id 'com.android.application' }
 android {
     namespace 'jp.nippo.unkou'
-    compileSdk 34
+    compileSdk 36
     defaultConfig {
         minSdk 24
         targetSdk 34
@@ -33,6 +33,7 @@ android {
         taiki {
             dimension 'app'
             applicationId 'jp.nippo.taiki'
+            targetSdk 36   // Google Play に出すので、Google Play の決まり（新しいアプリは Android 16 = API 36 を対象）に合わせる
             resValue 'string', 'app_name', '待機アラーム'
             buildConfigField 'String', 'HOME', '"https://yelloweagle0009-blip.github.io/nippo/taiki/"'
             buildConfigField 'String', 'UA', '" TaikiApp/1"'
@@ -58,6 +59,8 @@ android {
         }
     }
     androidResources { noCompress 'onnx', 'wasm' }
+    // 運行日報・LINE連絡は仲間うちで配るだけなので、対象の Android は今のまま（Google Play の対象の決まりの検査で止めない）
+    lint { checkReleaseBuilds false }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
