@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="jp.nippo.unkou.SetupActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+    <subtype android:label="LINE連絡" android:imeSubtypeLocale="ja_JP" android:imeSubtypeMode="keyboard" />
+</input-method>
