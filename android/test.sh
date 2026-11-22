@@ -90,6 +90,13 @@ else
     [ $RC -eq 0 ] && RC=$TRC
   fi
 fi
+# 待機アラームの画面が、上の帯（時計など）の下に隠れていないか：ページ（WebView）の上端が画面の上端より下にあること
+adb shell am start -W -n jp.nippo.taiki/jp.nippo.unkou.MainActivity; sleep 4
+adb shell uiautomator dump /sdcard/t.xml >/dev/null 2>&1
+WTOP=$(adb shell cat /sdcard/t.xml | grep -o 'class="android.webkit.WebView"[^>]*bounds="\[[0-9]*,[0-9]*\]' | head -1 | sed 's/.*,\([0-9]*\)\]$/\1/')
+echo "WEBVIEW_TOP=$WTOP  API=$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+adb exec-out screencap -p > out/shot-taiki-top.png
+[ "${WTOP:-0}" -gt 0 ] || { echo "FAIL: 待機アラームの画面が上の帯に隠れている"; [ $RC -eq 0 ] && RC=15; }
 # ---- LINE連絡キーボード（jp.nippo.renraku） ----
 adb install -r renraku-line.apk || exit 1
 node android/test-renraku.js > out/test-renraku.txt 2>&1
