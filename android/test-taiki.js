@@ -77,7 +77,7 @@ process.on('exit', () => { if (!passed) console.log('FAIL: 途中で終わった
     await new Promise(r => setTimeout(r, 6500));
     NippoAndroid.alarm(true); await new Promise(r => setTimeout(r, 1500)); const playing = NippoAndroid.alarmPlaying();
     NippoAndroid.alarm(false); await new Promise(r => setTimeout(r, 800)); const stopped = !NippoAndroid.alarmPlaying();
-    const b = document.getElementById('goBtn'); if (/止める/.test(b.textContent)) b.click();
+    const b = document.getElementById('goBtn'); if (/やめる|止める/.test(b.textContent)) b.click();
     return { cam: true, w: v.videoWidth, h: v.videoHeight, st: document.getElementById('st').textContent, alarmPlaying: playing, alarmStopped: stopped };
   });
   console.log('TAIKI', JSON.stringify(tk));
