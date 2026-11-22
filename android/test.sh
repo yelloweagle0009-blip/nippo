@@ -90,5 +90,10 @@ else
     [ $RC -eq 0 ] && RC=$TRC
   fi
 fi
+# ---- LINE連絡キーボード（jp.nippo.renraku） ----
+adb install -r renraku-line.apk || exit 1
+node android/test-renraku.js > out/test-renraku.txt 2>&1
+cat out/test-renraku.txt
+grep -q '^PASS' out/test-renraku.txt || RC=14
 adb logcat -d -t 400 > out/logcat.txt
 exit $RC
