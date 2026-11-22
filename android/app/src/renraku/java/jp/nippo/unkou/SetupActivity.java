@@ -61,6 +61,7 @@ public class SetupActivity extends Activity {
         TextView h = text(box, "LINE連絡キーボード", 24, true, 0xFF3F1868);
         text(box, "会社の LINE の入力欄の下に、次に送る文の選択肢を出すキーボードです。押すと入力欄に文が入るので、LINE の［送信］を押してください。"
                 + "このアプリはインターネットを使う許可を持っていないので、入力した内容をどこかへ送ることはできません。", 15, false, mute);
+        learned = text(box, "", 15, true, ink);
 
         text(box, "① キーボードを有効にする（最初の1回だけ）", 17, true, purple);
         status = text(box, "", 15, false, ink);
@@ -84,8 +85,7 @@ public class SetupActivity extends Activity {
             Toast.makeText(this, "保存しました", Toast.LENGTH_SHORT).show();
         });
 
-        text(box, "④ 覚えている履歴", 17, true, purple);
-        learned = text(box, "", 15, false, ink);
+        text(box, "④ 履歴を覚え直す", 17, true, purple);
         button(box, "LINE の履歴を読み込む（.txt）", v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("text/*");
             startActivityForResult(i, REQ_FILE);
