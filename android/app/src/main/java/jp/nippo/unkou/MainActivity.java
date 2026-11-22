@@ -62,10 +62,6 @@ public class MainActivity extends Activity {
     static final int REQ_FILE = 1;
     static final int REQ_CAM = 2;
     static final int REQ_CAM_PHOTO = 3;
-    static final int REQ_LOC = 4;
-    int pendingCar = -1;          // 位置の許可を待っているあいだの「出庫」（車番）
-    boolean pendingFix = false;   // 位置の許可を待っているあいだの「場所の登録」
-    volatile String oneFix = "";  // 場所の登録用に、いま1回だけ取った位置
     Intent camIntent;   // カメラの許可を待っているあいだの「写真を撮る」
     PermissionRequest camReq;   // 待機アラームのカメラの許可待ち
     Ringtone ring;               // 待機アラームの音（目覚ましと同じ「アラーム」の音量・音で鳴らす）
@@ -167,85 +163,9 @@ public class MainActivity extends Activity {
             }
         });
         web.addJavascriptInterface(new Bridge(), "NippoAndroid");
-        if (BuildConfig.TRIP) Holidays.refresh(this);   // 祝日の一覧を月に1回取り直す
 
         if (state != null) web.restoreState(state);
-        else web.loadUrl(pageUrl(getIntent()));
-    }
-
-    // 通知から開いたとき：運行連絡の画面（renraku.html）を開く
-    String pageUrl(Intent i) {
-        String pg = i != null ? i.getStringExtra("page") : null;
-        if (pg != null && pg.matches("[a-z]+\\.html")) return HOME + pg;
-        return HOME;
-    }
-
-    @Override
-    protected void onNewIntent(Intent i) {
-        super.onNewIntent(i);
-        setIntent(i);
-        String pg = i.getStringExtra("page");
-        if (pg != null && web != null) {
-            String u = pageUrl(i), now = web.getUrl();
-            if (now == null || !now.startsWith(u)) web.loadUrl(u);
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (!BuildConfig.TRIP) return;
-        // 記録中のはずなのに止まっていた（スマホが止めた・電池切れのあと）：開き直したら続ける
-        try {
-            org.json.JSONObject t = TripStore.trip(this);
-            if (t.optBoolean("active") && !TripStore.today().equals(t.optString("day"))) TripService.stop(this, "nextday");   // 前の日の記録は続けない（朝の［出庫］で新しい1日）
-            else if (t.optBoolean("active") && !TripService.running && hasLoc()) TripService.start(this, t.optInt("car"));
-        } catch (Exception e) { }
-        if (web != null) web.evaluateJavascript("window.onAppResume&&window.onAppResume()", null);
-    }
-
-    boolean hasLoc() {
-        return Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    // 位置（使用中のみ）と通知の許可をもらう。もう許可されていれば true
-    boolean askLoc() {
-        if (hasLoc()) {
-            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_LOC + 10);
-            return true;
-        }
-        java.util.ArrayList<String> L = new java.util.ArrayList<>();
-        L.add(Manifest.permission.ACCESS_FINE_LOCATION); L.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-        if (Build.VERSION.SDK_INT >= 33) L.add(Manifest.permission.POST_NOTIFICATIONS);
-        requestPermissions(L.toArray(new String[0]), REQ_LOC);
-        return false;
-    }
-
-    void js(String code) { runOnUiThread(() -> { if (web != null) web.evaluateJavascript(code, null); }); }
-
-    void startTrip(int car) {
-        boolean resume = TripService.start(this, car);
-        js("window.onTripStarted&&window.onTripStarted(" + resume + ")");
-    }
-
-    // 場所の登録用：GPS で1回だけ位置を取る（記録中なら最後の位置を使う）
-    @SuppressWarnings("MissingPermission")
-    void fixOnce() {
-        oneFix = "";
-        if (!hasLoc()) return;
-        android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-        android.location.LocationListener l = new android.location.LocationListener() {
-            public void onLocationChanged(android.location.Location x) {
-                try { oneFix = new org.json.JSONObject().put("lat", x.getLatitude()).put("lon", x.getLongitude()).put("acc", x.hasAccuracy() ? x.getAccuracy() : -1).put("ts", System.currentTimeMillis()).toString(); } catch (Exception e) { }
-                lm.removeUpdates(this);
-            }
-            public void onStatusChanged(String p, int st, Bundle b) { }
-            public void onProviderEnabled(String p) { }
-            public void onProviderDisabled(String p) { }
-        };
-        try { lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 1000, 0f, l, Looper.getMainLooper()); } catch (Exception e) { }
-        loop.postDelayed(() -> { try { lm.removeUpdates(l); } catch (Exception e) { } }, 60000);
+        else web.loadUrl(HOME);
     }
 
     // 文字を読む部品をアプリの中から出す（無ければ null を返して普通に取りに行く）
@@ -301,15 +221,6 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
         boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
-        if (req == REQ_LOC) {
-            boolean loc = hasLoc();
-            if (loc && pendingFix) fixOnce();
-            pendingFix = false;
-            if (loc && pendingCar >= 0) startTrip(pendingCar);
-            else if (!loc) js("window.onTripStarted&&window.onTripStarted('denied')");
-            pendingCar = -1;
-            return;
-        }
         if (req == REQ_CAM_PHOTO && camIntent != null) {
             Intent go = camIntent; camIntent = null;
             if (!ok) {   // 許可されなかったら、保存した写真から選ぶ
@@ -453,118 +364,6 @@ public class MainActivity extends Activity {
                 try { startActivity(Intent.createChooser(i, "送る先を選ぶ")); }
                 catch (Exception e) { Toast.makeText(MainActivity.this, "送るアプリが見つかりませんでした", Toast.LENGTH_LONG).show(); }
             });
-        }
-
-        // ---- 運行連絡（運行日報のアプリだけ）----
-        @JavascriptInterface
-        public boolean tripAvailable() { return BuildConfig.TRIP; }
-
-        // 今日の記録・登録した場所・設定をまとめて返す
-        @JavascriptInterface
-        public String tripState() {
-            if (!BuildConfig.TRIP) return "";
-            try {
-                org.json.JSONObject o = new org.json.JSONObject();
-                o.put("trip", TripStore.trip(MainActivity.this)); o.put("conf", TripStore.conf(MainActivity.this));
-                o.put("running", TripService.running); o.put("loc", hasLoc()); o.put("now", System.currentTimeMillis());
-                return o.toString();
-            } catch (Exception e) { return ""; }
-        }
-
-        // 出庫：許可が無ければ聞いてから始める。結果は onTripStarted(true＝続き / false＝新しい1日 / 'denied') で返す
-        @JavascriptInterface
-        public void tripStart(int car) {
-            if (!BuildConfig.TRIP) return;
-            runOnUiThread(() -> { if (askLoc()) startTrip(car); else pendingCar = car; });
-        }
-
-        @JavascriptInterface
-        public void tripStop() { if (BuildConfig.TRIP) TripService.stop(MainActivity.this, "button"); }
-
-        // 設定（場所・点呼の時刻・よく使う文・予定・判定の数値）を丸ごと保存する
-        @JavascriptInterface
-        public boolean confSave(String json) {
-            if (!BuildConfig.TRIP) return false;
-            try { TripStore.saveConf(MainActivity.this, new org.json.JSONObject(json)); return true; } catch (Exception e) { return false; }
-        }
-
-        // 今日の記録の1件（visits / msgs / stops / gaps の id）を直す。json の中身を上書きする（null は消す）
-        @JavascriptInterface
-        public boolean tripPatch(String kind, long id, String json) {
-            if (!BuildConfig.TRIP) return false;
-            synchronized (TripStore.LOCK) {
-                try {
-                    org.json.JSONObject t = TripStore.trip(MainActivity.this), p = new org.json.JSONObject(json);
-                    org.json.JSONArray a = t.optJSONArray(kind);
-                    if (a == null) return false;
-                    for (int i = 0; i < a.length(); i++) {
-                        org.json.JSONObject x = a.getJSONObject(i);
-                        if (x.optLong("id") != id) continue;
-                        org.json.JSONArray ks = p.names();
-                        if (ks != null) for (int k = 0; k < ks.length(); k++) { String key = ks.getString(k); if (p.isNull(key)) x.remove(key); else x.put(key, p.get(key)); }
-                        if (p.optBoolean("del")) a.remove(i);
-                        TripStore.saveTrip(MainActivity.this, t);
-                        if ("msgs".equals(kind) && (p.has("sent") || p.has("skip")) && (x.optBoolean("sent") || x.optBoolean("skip"))) TripService.cancelMsg(MainActivity.this, id);
-                        else if ("msgs".equals(kind) && p.has("texts") && x.optBoolean("posted") && !x.optBoolean("sent") && !x.optBoolean("skip"))
-                            TripService.postMsg(MainActivity.this, id, "連絡（文を直しました・未送信）", x.getJSONArray("texts").optString(0));
-                        return true;
-                    }
-                } catch (Exception e) { }
-                return false;
-            }
-        }
-
-        // 今日の記録に1件足す（手で入れた行・手打ちの連絡など）。付けた id を返す
-        @JavascriptInterface
-        public long tripAdd(String kind, String json) {
-            if (!BuildConfig.TRIP) return -1;
-            synchronized (TripStore.LOCK) {
-                try {
-                    org.json.JSONObject t = TripStore.trip(MainActivity.this), x = new org.json.JSONObject(json);
-                    if (!t.has("startTs")) return -1;
-                    long id = t.optLong("seq", 1); t.put("seq", id + 1); x.put("id", id);
-                    if (!t.has(kind)) t.put(kind, new org.json.JSONArray());
-                    t.getJSONArray(kind).put(x);
-                    TripStore.saveTrip(MainActivity.this, t);
-                    return id;
-                } catch (Exception e) { return -1; }
-            }
-        }
-
-        // LINE を開く（文入りの「送る先を選ぶ」）。mid は今日の連絡の id（無ければ -1）。送信は本人が LINE で押す
-        @JavascriptInterface
-        public void lineSend(String text, long mid) {
-            runOnUiThread(() -> SendActivity.openLine(MainActivity.this, text, mid));
-        }
-
-        // 次に行く日（試験と画面用）。ymd＝"2026-11-20" の次の運行日
-        @JavascriptInterface
-        public String nextWorkDay(String ymd) {
-            try { String[] p = ymd.split("-"); java.util.Calendar c = java.util.Calendar.getInstance(); c.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]), 12, 0, 0); return Holidays.nextWord(MainActivity.this, c); } catch (Exception e) { return ""; }
-        }
-
-        @JavascriptInterface
-        public String holidayInfo() { java.io.File f = Holidays.file(MainActivity.this); return Holidays.all(MainActivity.this).size() + " " + (f.exists() ? f.length() : 0); }
-
-        @JavascriptInterface
-        public void doneRefresh() { if (BuildConfig.TRIP) TripService.refreshDone(MainActivity.this); }
-
-        @JavascriptInterface
-        public void msgMark(long mid, boolean sent) { if (BuildConfig.TRIP) SendActivity.mark(MainActivity.this, mid, sent, null); }
-
-        // 場所の登録用に位置を1回取る。fixGet() で受け取る（取れるまで ""）
-        @JavascriptInterface
-        public void fixStart() {
-            if (!BuildConfig.TRIP) return;
-            runOnUiThread(() -> { if (askLoc()) fixOnce(); else pendingFix = true; });
-        }
-
-        @JavascriptInterface
-        public String fixGet() {
-            if (!oneFix.isEmpty()) return oneFix;
-            org.json.JSONObject lf = TripStore.trip(MainActivity.this).optJSONObject("lastFix");
-            if (TripService.running && lf != null && System.currentTimeMillis() - lf.optLong("ts") < 30000) return lf.toString();
-            return "";
         }
 
         @JavascriptInterface
