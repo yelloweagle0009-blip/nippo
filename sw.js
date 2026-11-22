@@ -1,5 +1,5 @@
 // 運行日報：ページを端末に保存して、電波が無くても開けるようにする
-const C='unkou-v37';
+const C='unkou-v38';
 const PARTS='nippo-parts-v1';   // 文字を読む部品（/nippo/m/）。アプリを更新しても消さない
 const FILES=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png','photo.js?v=31','ocr.js?v=30','taiki.html','taiki/?from=nippo','taiki.js?v=4'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(C).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())); });

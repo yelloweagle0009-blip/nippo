@@ -156,7 +156,7 @@ input:not([type=checkbox]):focus{border-color:var(--accent);box-shadow:0 0 0 3px
   <label class="chk"><input type="checkbox" id="ocrOn"><span>写真の数字も自動で読む（スマホの中で読みます。読むための部品を最初の1回だけ約40MBダウンロードして、スマホに保存します）</span></label>
   <p class="note" id="partsNote"></p>
   <p style="margin:14px 0 4px"><a class="btn" href="taiki/?from=nippo" style="display:inline-block;text-decoration:none">荷待ちの「待機アラーム」を開く</a></p>
-  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 37</p>
+  <p class="note" id="appVer" style="text-align:right;margin:0">アプリの版 38</p>
   <p class="busy" id="busy"></p>
   <div id="progBar" hidden></div>
   <div id="photoTop"></div>
@@ -426,6 +426,11 @@ const onPhoto=async e=>{
   if(!res.ok){ $('busy').textContent=res.empty?'書いてある行が見つかりませんでした。':res.upside?'用紙の上下の向きが分かりませんでした。用紙の上が写真の上になるように撮り直してください。':'用紙を見つけられませんでした。上から、用紙全体が入るように撮り直してください。'; return; }
   const apply=()=>{
     learnFlush();   // 前の写真の分を、行を作り直す前に記録する
+    // 始業・終業メーター：前の写真から読んだ値と、前の日に打った値は消して、この写真から読み直す
+    // （残っていると、始業・終業を読まず、3桁メーターも前の日の値に合わないとして捨ててしまう＝2026-11-22に見つけた不具合）
+    // 今日、手で打った値だけは残す
+    { const today=new Date(D.day||0).toDateString()===new Date().toDateString(), ah=D.autoHead||{};
+      ['start','end'].forEach(f=>{ if(ah[f]||!today) D[f]=''; }); D.autoHead={}; }
     D.day=Date.now();  // 写真ごとに新しい日として距離を覚える
     D.rows=res.rows.map(r=>({arr:'',dep:'',meter:'',loaded:r.loaded,cargo:{in:!!r.cargoIn,out:!!r.cargoOut,outOnly:!!r.cargoOutOnly}}));
     if(D.rows.length<2) D.rows.push(newRow());
