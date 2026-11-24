@@ -149,7 +149,7 @@ input[type=range]{width:100%;accent-color:var(--v2);margin:4px 0}
 
 <div id="alarm"><div class="ring">🚚</div><h2>前が動きました</h2><p>発進すると音は自動で止まります</p><button id="stopBtn">止める</button></div>
 
-<script src="../taiki.js?v=4"></script>
+<script src="../taiki.js?v=5"></script>
 <script>
 const $=id=>document.getElementById(id), T=window.NippoTaiki;
 const v=$('v'), ov=$('ov'), work=document.createElement('canvas'); work.width=T.W; work.height=T.H; const wx=work.getContext('2d',{willReadFrequently:true});
@@ -206,7 +206,7 @@ function tick(){ pill(); if(!v.videoWidth) return; const vw=v.videoWidth, vh=v.v
   REC.push({t:+tt.toFixed(2),g,d:+r.d.toFixed(3),sp:+(r.sp||0).toFixed(2),st:r.state}); while(REC.length>60) REC.shift();   // 鳴る前の30秒を覚えておく
   $('lvI').style.width=Math.min(100,r.d/(th*2)*100)+'%';
   if(r.alarm&&!beepT){ $('alarm').classList.add('on'); beepStart(); st('前が動きました（'+r.why+'）');
-    LASTREC={when:new Date().toISOString(),mode:sens,box:box(),w:T.W,h:T.H,ver:'taiki.js v4',frames:REC.slice()}; $('recBtn').disabled=false; $('recState').textContent='›'; $('recNote').textContent=''; return; }
+    LASTREC={when:new Date().toISOString(),mode:sens,box:box(),w:T.W,h:T.H,ver:'taiki.js v5',frames:REC.slice()}; $('recBtn').disabled=false; $('recState').textContent='›'; $('recNote').textContent=''; return; }
   if(r.event==='drove'){ alarmOff(); st('発進したので音を止めました'); return; }
   if(r.event==='self'){ st('前に詰めています'); return; }
   if(r.state==='wait') st('止まるのを待っています');
