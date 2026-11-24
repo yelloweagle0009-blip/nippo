@@ -7,6 +7,7 @@
 // ・知らせているあいだに自分の車が動き出したら、自動で音を止める
 // 人が前を横切る・ライトが当たる・明るさが変わる：形は変わっても「小さくなる」動きではないので鳴らさない
 // 自分の車が前に詰める：前の車の後ろ姿が「大きくなる」ので、前が離れたのとは区別できる
+// v5（2026-11-24）：雨の日、ワイパーが通ったあとに鳴る不具合を直した（大きく変わってすぐ落ち着いたら、比べる相手を今の映像に取り替える）
 // v4（2026-11-19）：止まっているのに鳴る不具合を直した
 // ・比べる相手（8秒前の映像）に、通り過ぎた人やフォークが写っていると、8秒後に何も動いていないのに鳴った → 落ち着いていた映像だけを比べる相手にする
 // ・枠を9つに分け、広い範囲が変わったときだけ数える（人・フォーク・影は一部だけ）。一度変わった区画が元に戻ったら「通り過ぎ」とみなす
@@ -46,7 +47,7 @@
   // approach＝これより広がったら「自分が詰めている」（鳴らさない）
   // settle＝止まってから見張りを始めるまでの秒数（ego＝まわりの変化は、画面に出すだけで判断には使わない）
   function Watcher(opt){ this.o=Object.assign({th:0.25,hold:4,lag:8,approach:1.02,egoTh:7,settle:3,spread:0.6,cellK:0.6},opt||{}); this.reset(); }
-  Watcher.prototype.reset=function(){ this.state='wait'; this.buf=[]; this.ref=null; this.cnt=0; this.cnt2=0; this.sh=[]; this.why=''; this.selfCnt=0; this.egoCnt=0; this.last=0; this.lastS=1; this.ego=0; this.prev=null; this.still=null; this.event=''; this.hist=[]; this.lastSp=0; this.peak=0; this.seen=[]; this.passCnt=0; };
+  Watcher.prototype.reset=function(){ this.state='wait'; this.buf=[]; this.ref=null; this.cnt=0; this.cnt2=0; this.sh=[]; this.why=''; this.selfCnt=0; this.egoCnt=0; this.last=0; this.lastS=1; this.ego=0; this.prev=null; this.still=null; this.event=''; this.hist=[]; this.lastSp=0; this.peak=0; this.seen=[]; this.passCnt=0; this.jumpT=null; this.calmN=0; };
   Watcher.prototype.step=function(g,t,rel){ const box=[Math.floor(rel[0]*W),Math.floor(rel[1]*H),Math.ceil(rel[2]*W),Math.ceil(rel[3]*H)];
     this.event='';
     const ego=this.prev?around(this.prev,g,box):0; this.prev=g; this.ego=ego;
@@ -64,12 +65,21 @@
       const calm=p&&p.g!==g&&diff(p.g,g,box)<this.o.th*0.5;
       if(!calm){ this.still=null; return this.out(); }
       if(this.still==null) this.still=t;
-      if(t-this.still>=this.o.settle){ this.state='watch'; this.buf=[]; this.ref=null; this.seen=[]; this.cnt=0; this.cnt2=0; this.sh=[]; this.selfCnt=0; this.last=0; this.lastS=1; this.event='armed'; }
+      if(t-this.still>=this.o.settle){ this.state='watch'; this.buf=[]; this.ref=null; this.seen=[]; this.cnt=0; this.cnt2=0; this.sh=[]; this.selfCnt=0; this.last=0; this.lastS=1; this.jumpT=null; this.calmN=0; this.event='armed'; }
       return this.out(); }
     // 比べる相手（基準）は「8秒前の映像」だが、そのとき前を人やフォークが通っていた映像を基準にすると、
     // 通り過ぎて8秒たったときに「人がいない今の映像」が基準と違って見え、何も動いていないのに鳴ってしまう（2026-11-19に見つけた不具合）。
     // そこで、各映像に「1秒前とほとんど同じだった（落ち着いていた）か」の印を付け、落ち着いていた映像だけを基準に選ぶ
-    const quiet=!(p&&p.g!==g)||diff(p.g,g,box)<this.o.th*0.5;
+    const step1=p&&p.g!==g?diff(p.g,g,box):0, quiet=step1<this.o.th*0.5;
+    // v5（2026-11-24）：雨の日にワイパーで鳴る不具合を直した
+    // ワイパーが通ると、ガラスの雨粒がまとめて消えるので、8秒前の映像と「枠いっぱいに違う」状態が8秒続き、前が動いたと勘違いした。
+    // ワイパー（人・フォークが前を通るのも同じ）は「1秒のあいだに大きく変わり、すぐまた落ち着く」。
+    // 前の車が走り出したときは、動いているあいだずっと変わり続ける。
+    // そこで、大きく変わったあと2回続けて落ち着いたら（4秒以内）、そのときの映像を新しい比べる相手にする
+    if(step1>=this.o.th*0.6){ if(this.jumpT==null) this.jumpT=t; this.calmN=0; }
+    else if(this.jumpT!=null){ this.calmN=step1<this.o.th*0.4?(this.calmN||0)+1:0;
+      if(this.calmN>=2){ const ok=t-this.jumpT<=4; this.jumpT=null; this.calmN=0;
+        if(ok){ this.buf=[{t,g,quiet:true}]; this.ref=g; this.cnt=0; this.cnt2=0; this.seen=[]; this.sh=[]; this.last=0; this.event='rebase'; return this.out(); } } }
     this.buf.push({t,g,quiet}); while(this.buf.length&&this.buf[0].t<t-this.o.lag-4) this.buf.shift();
     if(this.cnt===0&&this.cnt2===0&&this.selfCnt===0){ const c=this.buf.filter(x=>x.t<=t-this.o.lag&&x.quiet);
       const nr=c.length?c[c.length-1].g:(this.ref||this.buf[0].g);   // 落ち着いた映像が無ければ、前の基準をそのまま使う
