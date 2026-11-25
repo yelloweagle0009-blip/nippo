@@ -142,14 +142,14 @@ input[type=range]{width:100%;accent-color:var(--v2);margin:4px 0}
   <div class="grab"></div><h3>使い方</h3>
   <p><b>置き方</b>　スマホを前に向けて立て、前の車の後ろ姿が枠に入るようにします。枠はタップした所に動きます。</p>
   <p><b>鳴るとき</b>　前の車が離れていくと鳴ります。人や影が横切っただけ、自分が前に詰めただけでは鳴りません。</p>
-  <p><b>止まるとき</b>　発進すると音は自動で止まり、止まって3秒たつとまた見張ります。</p>
+  <p><b>止まるとき</b>　発進すると音は自動で止まり、止まって3秒たつとまた見張ります。［止める］で音を止めたときは見張りも終わるので、次に止まったら［見張りスタート］を押してください。</p>
   <p><b>気をつけること</b>　画面はつけたまま、充電しながら使ってください。真っ暗・強い雨・車間が空きすぎのときは見落とすことがあります。最初はタイマーなどと一緒に使って確かめてください。</p>
   <p><b>間違って鳴ったら</b>　⚙ の「鳴る前の記録を保存」で記録をファイルにできます。送ってもらえれば原因を調べます。</p>
 </div>
 
 <div id="alarm"><div class="ring">🚚</div><h2>前が動きました</h2><p>発進すると音は自動で止まります</p><button id="stopBtn">止める</button></div>
 
-<script src="../taiki.js?v=5"></script>
+<script src="../taiki.js?v=6"></script>
 <script>
 const $=id=>document.getElementById(id), T=window.NippoTaiki;
 const v=$('v'), ov=$('ov'), work=document.createElement('canvas'); work.width=T.W; work.height=T.H; const wx=work.getContext('2d',{willReadFrequently:true});
@@ -218,7 +218,9 @@ $('goBtn').onclick=async()=>{
   if(!stream&&!(await camOn())) return;   // カメラがついていなければ、ここでつける
   watcher=new T.Watcher(MODES[sens]); await keepOn(); t0=Date.now();
   timer=setInterval(tick,500); setWatching(true); st('止まるのを待っています'); };
-$('stopBtn').onclick=()=>{ alarmOff(); if(watcher) watcher.silence(); st('音を止めました。止まると、また見張ります'); };
+// ［止める］を押したら見張りを終える（2026-11-25）。前の車が行ったあと止まったまま見張りに戻ると、
+// 枠に道路しか写っておらず、自分が走り出したときに2回目が鳴った。次に止まったら［見張りスタート］を押してもらう
+$('stopBtn').onclick=()=>{ alarmOff(); if(timer){ clearInterval(timer); timer=null; keepOff(); setWatching(false); } st('音を止めました。次に止まったら［見張りスタート］を押してください'); };
 
 // 知らせるタイミング（選んだものを覚えておく）
 function setSens(x){ if(!MODES[x]) return; sens=x; if(watcher) Object.assign(watcher.o,MODES[x]); store.set('taiki-sens',x);
