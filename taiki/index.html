@@ -155,7 +155,7 @@ input[type=range]{width:100%;accent-color:var(--v2);margin:4px 0}
 
 <div id="alarm"><div class="ring">🚚</div><h2>前が動きました</h2><p>発進すると音は自動で止まります</p><button id="stopBtn">止める</button></div>
 
-<script src="../taiki.js?v=7"></script>
+<script src="../taiki.js?v=8"></script>
 <script>
 const $=id=>document.getElementById(id), T=window.NippoTaiki;
 const v=$('v'), ov=$('ov'), work=document.createElement('canvas'); work.width=T.W; work.height=T.H; const wx=work.getContext('2d',{willReadFrequently:true});
@@ -204,11 +204,21 @@ $('testBtn').onclick=()=>{ if(beepT) return; beepStart(); setTimeout(beepStop,15
 // 画面を消さない
 async function keepOn(){ try{ if(window.NippoAndroid&&NippoAndroid.keepOn) NippoAndroid.keepOn(true); }catch(e){} try{ if('wakeLock' in navigator) lock=await navigator.wakeLock.request('screen'); }catch(e){} }
 function keepOff(){ try{ if(window.NippoAndroid&&NippoAndroid.keepOn) NippoAndroid.keepOn(false); }catch(e){} if(lock){ try{ lock.release(); }catch(e){} lock=null; } }
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&timer) keepOn(); });
+// 画面を消して戻したとき（2026-11-26）：スマホは画面が消えるとカメラを止めるので、戻ってもカメラの映像が止まったままになっていた。
+// 戻ったらカメラが生きているか確かめ、止まっていればつなぎ直す
+function camAlive(){ return !!stream&&stream.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted)&&!v.paused; }
+let camBusy=false;
+async function camRestart(){ if(camBusy) return; camBusy=true; try{ if(stream) stream.getTracks().forEach(t=>{ try{ t.stop(); }catch(e){} }); stream=null; v.srcObject=null; await camOn(); } finally{ camBusy=false; } }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState!=='visible') return; if(timer) keepOn();
+  if(store.get('taiki-cam')&&!camAlive()){ camRestart().then(()=>{ if(timer&&watcher) watcher.reset(); }); } else if(stream&&v.paused){ v.play().catch(()=>{}); } });
 
 // 見張り
 let REC=[], LASTREC=null;
-function tick(){ pill(); if(!v.videoWidth) return; const vw=v.videoWidth, vh=v.videoHeight, ar=16/9; let sw=vw, sh=vw/ar; if(sh>vh){ sh=vh; sw=vh*ar; }
+let lastVT=-1, stuckN=0;
+function tick(){ pill();
+  // 見張り中に映像が止まっていないか（カメラが止められたら2秒でつなぎ直す。止まった映像を見張っても鳴らないため）
+  if(v.currentTime===lastVT||!camAlive()){ if(++stuckN>=4&&!camBusy){ stuckN=0; st('カメラをつなぎ直しています…'); camRestart().then(()=>{ if(watcher) watcher.reset(); }); } } else stuckN=0; lastVT=v.currentTime;
+  if(!v.videoWidth) return; const vw=v.videoWidth, vh=v.videoHeight, ar=16/9; let sw=vw, sh=vw/ar; if(sh>vh){ sh=vh; sw=vh*ar; }
   wx.drawImage(v,(vw-sw)/2,(vh-sh)/2,sw,sh,0,0,T.W,T.H); const g=T.toGray(wx);
   const tt=performance.now()/1000, r=watcher.step(g,tt,box()); const th=watcher.o.th;
   REC.push({t:+tt.toFixed(2),g,d:+r.d.toFixed(3),sp:+(r.sp||0).toFixed(2),st:r.state}); while(REC.length>60) REC.shift();   // 鳴る前の30秒を覚えておく
