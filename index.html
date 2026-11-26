@@ -278,8 +278,25 @@ function placeRows(){ const out=[]; if(!PH||!PH.places) return out;
   D.rows.forEach((r,i)=>{ const rd=PH.places[i], v=pname(r.place); if(!rd||!rd.length||!v) return; const a=r.auto&&r.auto.place; if(a&&a!==1) return;
     out.push({t:PH.t||Date.now(),v,r:rd}); });
   return out; }
+// 細かい切り抜きの記録（2026-11-27 から）：手書きの数字を学習させるため、欄の切り抜きを細かいまま（高さ最大128）残す。
+// localStorage（約5MB）には入りきらないので、スマホのデータベース（IndexedDB）に入れる。写真を選んだときに切り抜きだけ入れ、
+// 次の写真を選ぶ直前（learnFlush）に、そのとき入っている正しい数字と読みを書き足す。古いものから消して最大3000件
+const HIDB='nippo-learn-hi';
+function hiDb(){ return new Promise((ok,ng)=>{ let r; try{ r=indexedDB.open(HIDB,1); }catch(e){ ng(e); return; } r.onupgradeneeded=()=>{ r.result.createObjectStore('cells',{keyPath:'k'}); }; r.onsuccess=()=>ok(r.result); r.onerror=()=>ng(r.error); }); }
+async function hiTx(fn){ const db=await hiDb(); try{ return await new Promise((ok,ng)=>{ const tx=db.transaction('cells','readwrite'), st=tx.objectStore('cells'); let out; Promise.resolve(fn(st)).then(v=>{ out=v; }); tx.oncomplete=()=>ok(out); tx.onerror=()=>ng(tx.error); }); } finally{ db.close(); } }
+const req=r=>new Promise((ok,ng)=>{ r.onsuccess=()=>ok(r.result); r.onerror=()=>ng(r.error); });
+function hiCrop(cv){ if(!cv) return null; const h=Math.min(128,cv.height), w=Math.max(8,Math.round(cv.width*h/cv.height)), c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); x.imageSmoothingQuality='high'; x.drawImage(cv,0,0,w,h); return c.toDataURL('image/jpeg',0.9); }
+async function hiAdd(t,rows){ try{ const keys=rows.map((r,i)=>{ const o={}; ['arr','dep','meter'].forEach(f=>{ if(f!=='meter'&&!(f==='arr'?r.hasArr:r.hasDep)) return; o[f]=t+'_'+i+'_'+f; }); return o; });
+    await hiTx(st=>{ rows.forEach((r,i)=>{ for(const [f,k] of Object.entries(keys[i])){ const cr=r.ocr[f]; st.put({k,t,f,v:'',A:hiCrop(cr.A),C:hiCrop(cr.C)}); } }); });
+    return keys; }catch(e){ return null; } }
+async function hiFlush(keys,rows,reads){ if(!keys) return; try{ await hiTx(async st=>{
+    rows.forEach((r,i)=>{ const ks=keys[i]; if(!ks) return; for(const [f,k] of Object.entries(ks)){ const v=digits(r[f]); if(!v||(r.est&&r.est[f])) continue; const g=st.get(k);
+      g.onsuccess=()=>{ const o=g.result; if(!o) return; o.v=v; o.auto=(r.autoV&&r.autoV[f])||''; const rd=reads&&reads[i]&&reads[i][f]; if(rd) o.reads=rd; st.put(o); }; } });
+    const n=await req(st.count()); if(n>3000){ const cur=st.openCursor(); let left=n-3000; cur.onsuccess=()=>{ const c=cur.result; if(!c||left<=0) return; c.delete(); left--; c.continue(); }; } }); }catch(e){} }
+async function hiAll(){ try{ return await hiTx(st=>req(st.getAll())); }catch(e){ return []; } }
 // 新しい写真・写真を消す・全部消す の直前に、今日の分を記録に足す
 function learnFlush(){
+  if(PH&&PH.hiKeys){ hiFlush(PH.hiKeys,D.rows.slice(),PH.reads); PH.hiKeys=null; }
   placeFlush();
   const add=learnRows(); if(!add.length) return 0; const L=learnLoad().concat(add);
   while(L.length>1500) L.shift();
@@ -288,8 +305,10 @@ function learnFlush(){
 }
 function placeFlush(){ const add=placeRows(); if(PH) PH.places=null; if(!add.length) return 0; const L=placeMemLoad().concat(add); while(L.length>400) L.shift();
   try{ localStorage.setItem(PLKEY,JSON.stringify(L)); }catch(e){} return add.length; }
-function learnExport(){
-  const L=learnLoad().concat(learnRows()).concat(placeMemLoad().concat(placeRows()).map(x=>({t:x.t,f:'place',v:x.v,reads:x.r}))); if(!L.length) return 0;
+async function learnExport(){
+  if(PH&&PH.hiKeys){ await hiFlush(PH.hiKeys,D.rows.slice(),PH.reads); }   // 今の写真の分も入れてから書き出す（印は残す）
+  const hi=(await hiAll()).filter(x=>x.v).map(x=>({t:x.t,f:x.f,v:x.v,auto:x.auto||'',img:x.A,imgC:x.C,hi:1,...(x.reads?{reads:x.reads}:{})}));
+  const L=hi.concat(learnLoad()).concat(learnRows()).concat(placeMemLoad().concat(placeRows()).map(x=>({t:x.t,f:'place',v:x.v,reads:x.r}))); if(!L.length) return 0;
   const name='nippo-yomitori-kiroku-'+new Date().toISOString().slice(0,10)+'.json';
   if(window.NippoAndroid&&window.NippoAndroid.save){ window.NippoAndroid.save(name,JSON.stringify(L)); return L.length; }   // Android版のアプリでは「ダウンロード」フォルダに保存する
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(L)],{type:'application/json'}));
@@ -423,7 +442,7 @@ document.addEventListener('click',e=>{
   if(d.ld!=null){ const r=D.rows[+d.ld]; r.loaded=!r.loaded; save(); b.setAttribute('aria-pressed',r.loaded); b.textContent=r.loaded?'実車':'空車'; const sg=b.closest('.seg'); if(sg) sg.classList.toggle('on',!!r.loaded); hints(); update(); }
   else if(d.del!=null){ if(D.rows.length<=2) return; const k=+d.del; D.rows.splice(k,1);
     // 写真から作った行の写真・積卸の写真・記録用の切り抜き・読みも同じ行を消す（消さないと下の行の写真と数字が1行ずれる）
-    if(PH){ ['rows','cargo','cells','reads','places'].forEach(n=>{ if(Array.isArray(PH[n])) PH[n].splice(k,1); }); savePH(); }
+    if(PH){ ['rows','cargo','cells','reads','places','hiKeys'].forEach(n=>{ if(Array.isArray(PH[n])) PH[n].splice(k,1); }); savePH(); }
     save(); render(); }
   else if(d.rdel!=null){ D.rests.splice(+d.rdel,1); save(); render(); }
   else if(b.id==='add'){ D.rows.push(newRow()); save(); render(); $('r'+(D.rows.length-1)+'m').focus(); }
@@ -432,7 +451,7 @@ document.addEventListener('click',e=>{
   else if(b.id==='photoBtn'){ $('photoIn').value=''; $('photoIn').click(); }
   else if(b.id==='camBtn'){ $('camIn').value=''; $('camIn').click(); }
   else if(b.id==='photoDel'){ learnFlush(); PH=null; savePH(); render(); }
-  else if(b.id==='learnExp'){ const n=learnExport(); $('busy').textContent=n?`読み取りの記録 ${n}件をファイルに書き出しました。`:'まだ記録がありません。'; }
+  else if(b.id==='learnExp'){ learnExport().then(n=>{ $('busy').textContent=n?`読み取りの記録 ${n}件をファイルに書き出しました。`:'まだ記録がありません。'; }); }
   else if(b.id==='clear'){
     const m=$('modal'); m.innerHTML=`<div><p style="margin:0 0 14px">入力を全部消して、新しい日にしますか？</p><div class="btns" style="justify-content:flex-end"><button class="btn" id="mNo">やめる</button><button class="btn solid" id="mOk">消す</button></div></div>`; m.hidden=false;
     $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; learnFlush(); D=fresh(); PH=null; savePH(); save(); render(); scrollTo(0,0); };
@@ -470,6 +489,7 @@ const onPhoto=async e=>{
     const small=cv=>{ if(!cv) return null; const h=48, w=Math.max(8,Math.round(cv.width*h/cv.height)), c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(cv,0,0,w,h); return c.toDataURL('image/jpeg',0.8); };
     PH={rows:res.rows.map(r=>r.img),cargo:res.rows.map(r=>r.cargoImg||null),header:res.header,t:Date.now(),
       cells:res.rows.map(r=>({arr:r.hasArr?small(r.ocr.arr.A):null,dep:r.hasDep?small(r.ocr.dep.A):null,meter:small(r.ocr.meter.C||r.ocr.meter.A)}))}; savePH(); save(); render();
+    { const t=PH.t, ph=PH; hiAdd(t,res.rows).then(keys=>{ if(PH===ph&&keys){ PH.hiKeys=keys; savePH(); } }); }
     $('photoTop').scrollIntoView({behavior:'smooth',block:'start'});
     if($('ocrOn').checked) readDigits(res.rows,res.head);
   };
@@ -546,7 +566,7 @@ render();
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
 <script src="photo.js?v=33"></script>
-<script src="ocr.js?v=35"></script>
+<script src="ocr.js?v=36"></script>
 
 </body>
 </html>

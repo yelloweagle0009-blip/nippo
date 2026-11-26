@@ -293,6 +293,6 @@ function pickPlace(reads,known,mem){
   const tier=(!unsure&&b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
 }
 async function readPlaces(rows,known,onProg){ const raw=await readPlaceRaw(rows,onProg); return raw.map(list=>pickPlace(list,known||[])); }
-const VER='2026-11-27a';   // 読み取りの版（画面に出して、新しい版で読んだか確かめられるようにする）
+const VER='2026-11-27b';   // 読み取りの版（画面に出して、新しい版で読んだか確かめられるようにする）
 window.NippoOCR={VER,load,closeModels,prefetch,partsReady,IN_APP,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
 })();
