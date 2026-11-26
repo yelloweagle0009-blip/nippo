@@ -272,12 +272,18 @@ function pickPlace(reads,known){
   if(!known.length) return cons.length?{name:cons[0],tier:'yellow',raw:true}:null;
   const wsum=R.reduce((a,x)=>a+x.m,0);
   const sc=known.map(k=>({name:k,s:R.reduce((a,x)=>a+x.m*simL(x.t,k),0)/wsum})).sort((a,b)=>b.s-a.s);
-  const b=sc[0], s2=sc[1]?sc[1].s:0;
+  let b=sc[0], s2=sc[1]?sc[1].s:0;
+  // 一番近い店名が、ほかの店名の頭の部分だけ（「KFK」と「KFKマシンセンター」「KFK甲府南工場」）で、
+  // その先にも字が読めているなら、短い店名ではなく、頭が同じ長い店名の中から選ぶ（2026-11-26 の日報：前に打った「KFK」が選ばれた）
+  //  （その先の字が長い店名の字と合っているときだけ。合っていなければ短い店名のまま。選び直したときは自信なし＝黄色）
+  const nb=normF(b.name), longer=sc.filter(e=>{ const ne=normF(e.name); return e!==b&&ne.length>nb.length&&ne.startsWith(nb)&&R.some(x=>lcsLen(normF(x.t),ne)>nb.length); });
+  let unsure=false; if(longer.length){ b=longer[0]; s2=longer[1]?longer[1].s:0; unsure=true; }
   for(const c of cons){ if(known.some(k=>normF(k)===normF(c))) continue; const sRaw=R.reduce((a,x)=>a+x.m*simL(x.t,c),0)/wsum;
     if(c.length>normP(b.name).length&&simL(c,b.name)>=0.6&&sRaw>b.s+0.05) return {name:c,tier:'yellow',raw:true};
     if(b.s<TP.blue&&sRaw>b.s+0.2) return {name:c,tier:'yellow',raw:true}; }   // 一覧のどれにも近くない新しい店名は、読んだ文字のまま
-  const tier=(b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
+  const tier=(!unsure&&b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
 }
 async function readPlaces(rows,known,onProg){ const raw=await readPlaceRaw(rows,onProg); return raw.map(list=>pickPlace(list,known||[])); }
-window.NippoOCR={load,closeModels,prefetch,partsReady,IN_APP,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
+const VER='2026-11-26d';   // 読み取りの版（画面に出して、新しい版で読んだか確かめられるようにする）
+window.NippoOCR={VER,load,closeModels,prefetch,partsReady,IN_APP,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
 })();

@@ -497,7 +497,7 @@ async function readDigits(prow,head){
     }catch(e){}
     save(); render();
     if(pn+pm) hn=(hn?hn+' ':'')+`店名：青 ${pn}か所・黄 ${pm}か所。`;
-    $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
+    $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。（読み取りの版 ${window.NippoOCR.VER||'?'}）`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
   }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。（理由：'+String(err&&err.message||err).slice(0,80)+'）'; }
   finally{ try{ await window.NippoOCR.closeModels(); }catch(e){}   // 読み終わったら文字を読む部品を閉じてメモリを返す
     READING=false; awake(false); try{ localStorage.removeItem(RDKEY); }catch(e){}
@@ -525,7 +525,7 @@ render();
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
 <script src="photo.js?v=33"></script>
-<script src="ocr.js?v=33"></script>
+<script src="ocr.js?v=34"></script>
 
 </body>
 </html>
