@@ -265,13 +265,22 @@ const lcsLen=(a,b)=>{ let p=new Array(b.length+1).fill(0); for(let i=1;i<=a.leng
 const simL=(a,b)=>{ a=normF(a); b=normF(b); if(!a||!b) return 0; const l=lcsLen(a,b); return 0.85*l/a.length+0.15*2*l/(a.length+b.length); };
 const TP={blue:0.45,gap:0.1,yel:0.2};
 // 読みの確からしさ（m）で重みをつけた平均で、前に入れた場所のどれに一番近いかを決める
-function pickPlace(reads,known){
+// mem：店名の覚え帳（[{v:店名, r:[[読んだ文字, 確からしさ],…]}]）。前に確かめた店名のときの読みと、今の読みが似ていれば、その店名の点を上げる
+// （覚え帳の店名は、一覧に無くても候補に入れる。点は「一覧の店名との似かた」と「覚え帳の読みとの似かた」の高い方）
+function memScore(R,wsum,mem){ const out={}; if(!mem||!mem.length) return out;
+  const cur=R.map(x=>({a:normF(x.t),m:x.m})).filter(x=>x.a);
+  for(const e of mem){ if(!e||!e.v||!Array.isArray(e.r)) continue; const past=e.r.map(q=>normF(q[0])).filter(Boolean); if(!past.length) continue;
+    let s=0; for(const x of cur){ let best=0; for(const b of past){ const l=lcsLen(x.a,b); best=Math.max(best,2*l/(x.a.length+b.length)); } s+=x.m*(best>=0.6?best:0); }   // 6割以上似た読みだけ数える（「牧野」だけ同じ、のような読みで別の店に寄らないように）
+    s/=wsum; if(!(out[e.v]>=s)) out[e.v]=s; }
+  return out; }
+function pickPlace(reads,known,mem){
   const R=reads.filter(x=>x.m>=0.4&&normP(x.t)); if(!R.length) return null;
   const raw={}; R.forEach(x=>{ const k=normP(x.t); raw[k]=(raw[k]||0)+1; });
   const cons=Object.entries(raw).filter(([k,c])=>c>=2).sort((a,b)=>b[1]-a[1]).map(([k])=>k);
   if(!known.length) return cons.length?{name:cons[0],tier:'yellow',raw:true}:null;
-  const wsum=R.reduce((a,x)=>a+x.m,0);
-  const sc=known.map(k=>({name:k,s:R.reduce((a,x)=>a+x.m*simL(x.t,k),0)/wsum})).sort((a,b)=>b.s-a.s);
+  const wsum=R.reduce((a,x)=>a+x.m,0), ms=memScore(R,wsum,mem);
+  known=known.concat(Object.keys(ms).filter(k=>!known.includes(k)));
+  const sc=known.map(k=>({name:k,s:Math.max(R.reduce((a,x)=>a+x.m*simL(x.t,k),0)/wsum,ms[k]||0)})).sort((a,b)=>b.s-a.s);
   let b=sc[0], s2=sc[1]?sc[1].s:0;
   // 一番近い店名が、ほかの店名の頭の部分だけ（「KFK」と「KFKマシンセンター」「KFK甲府南工場」）で、
   // その先にも字が読めているなら、短い店名ではなく、頭が同じ長い店名の中から選ぶ（2026-11-26 の日報：前に打った「KFK」が選ばれた）
@@ -284,6 +293,6 @@ function pickPlace(reads,known){
   const tier=(!unsure&&b.s>=TP.blue&&b.s-s2>=TP.gap)?'blue':(b.s>=TP.yel?'yellow':''); return tier?{name:b.name,tier,raw:false}:null;
 }
 async function readPlaces(rows,known,onProg){ const raw=await readPlaceRaw(rows,onProg); return raw.map(list=>pickPlace(list,known||[])); }
-const VER='2026-11-26d';   // 読み取りの版（画面に出して、新しい版で読んだか確かめられるようにする）
+const VER='2026-11-27a';   // 読み取りの版（画面に出して、新しい版で読んだか確かめられるようにする）
 window.NippoOCR={VER,load,closeModels,prefetch,partsReady,IN_APP,readRows,readHead,readPlaceRaw,readPlaces,pickPlace,decide,decideOld,W,TH};
 })();
