@@ -272,6 +272,8 @@ async function analyze(file,opt){
   for(let pr=2;pr<=Math.max(2,lastRow);pr++){
     const r=rows[pr-1], hb=r.d/2;
     const view=rectCrop(hiR,k,X(r,-62),r.y-r.d*0.62,X(r,440),r.y+r.d*0.62);   // 行の写真：欄外のメーター〜時刻〜店名まで
+    // 卸荷個数・積荷個数の欄の写真（実車・空車を見比べられるように。2026-11-26 名取さんの希望で追加）。傾きの分だけ上下をずらす
+    const oyC=cs*(X(r,485)-X(r,226)), cargoView=rectCrop(hiR,k,X(r,420),r.y+oyC-r.d*0.62,X(r,548),r.y+oyC+r.d*0.62);
     const cell=(a,b)=>({A:rectCrop(hiR,k,X(r,146),a-hb*0.25,X(r,234),b+hb*0.25), C:tightCrop(L,X(r,146),X(r,234),a-hb*0.6,b+hb*0.6,(a+b)/2,hb,'time')});
     const meterA=rectCrop(hiR,k,X(r,-60),r.y-r.d*0.75,X(r,72),r.y+r.d*0.75);
     const placeA=rectCrop(hiR,k,X(r,236),r.y-r.d*0.55,X(r,404),r.y+r.d*0.55);  // 店名欄（行の着・発をまたいで書かれる）
@@ -283,7 +285,7 @@ async function analyze(file,opt){
     // 出るときから荷を積んでいた（乗り換えたトラックの荷など）として実車にする
     const first=pr===2, nextOnlyUn=(oroshi[pr]||0)>OROSHI2&&!((tsumi[pr]||0)>TSUMI);
     out.push({paperRow:pr, loaded:first?(ld||nextOnlyUn):(ld||nextUn), cargoIn:ld, cargoOut:oroshi[pr-1]>OROSHI, cargoOutOnly:oroshi[pr-1]>OROSHI2&&!ld, struck:struckCargo[pr-1], hasArr:times[2*(pr-1)]>0.06, hasDep:times[2*(pr-1)+1]>0.06,
-      img:view.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
+      img:view.toDataURL('image/jpeg',0.82), cargoImg:cargoView.toDataURL('image/jpeg',0.82), ocr:{arr:cell(r.y-hb,r.y), dep:cell(r.y,r.y+hb), meter:{A:meterA,C:meterC}, place:{A:placeA}}});
   }
   // 始業・終業メーター欄（1行目の位置から見た決まった場所。写っていなければ出さない）
   const r1=rows[0]; let header=null;

@@ -49,6 +49,11 @@ h2{font-size:14px;color:var(--accent);letter-spacing:.15em;margin:18px 0 8px}
 .ch b small{font-size:12px;margin-left:2px;font-family:var(--f-body)}
 .cpl{flex:1;min-width:0;font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card .crop{margin:0 0 8px}
+/* 卸荷・積荷の写真：紙と同じ並び（左が卸荷、右が積荷）。上の見出しは写真の欄の位置にそろえる */
+.cgv{width:72%;margin:-2px 0 8px}
+.cgh{display:grid;grid-template-columns:4.7% 40.6% 4.7% 39.1% 10.9%;font-size:11px;color:var(--muted);text-align:center;margin-bottom:2px}
+.cgh b{font-weight:400;white-space:nowrap}
+.cgv .crop{width:100%;margin:0}
 .tm{display:grid;grid-template-columns:1.3em 1fr;gap:4px 4px;align-items:center}
 .tm i{font-style:normal;font-size:13px;color:var(--muted);text-align:center}
 .mt{display:grid;grid-template-columns:auto 1fr auto;gap:6px 8px;align-items:center;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;margin:0 0 12px}
@@ -327,6 +332,7 @@ function render(){
   D.rows.forEach((r,i)=>{
     h+=`<div class="card"><div class="ch"><b>${i+2}<small>行目</small></b><span class="cpl" id="t${i}">${esc(r.place||'')}</span><button class="x" data-del="${i}" aria-label="${i+2}行目を消す">×</button></div>`;
     if(PH&&PH.rows&&PH.rows[i]) h+=`<img class="crop" src="${PH.rows[i]}" alt="写真の${i+2}行目">`;
+    if(PH&&PH.cargo&&PH.cargo[i]) h+=`<div class="cgv"><div class="cgh"><i></i><b>卸荷個数</b><i></i><b>積荷個数</b><i></i></div><img class="crop" src="${PH.cargo[i]}" alt="写真の${i+2}行目の卸荷個数・積荷個数"></div>`;
     h+=`<div class="row"><span class="lb">メーター</span><span class="lb">着・発</span>
       <input id="r${i}m" data-r="${i}" data-f="meter" class="${r.est&&r.est.meter?'est':(r.auto&&r.auto.meter?(r.auto.meter===2?'maybe':'auto'):'')}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc(r.meter)}" aria-label="${i+2}行目 メーター">
       <div class="tm"><i>着</i><input id="r${i}a" data-r="${i}" data-f="arr" class="${r.auto&&r.auto.arr?(r.auto.arr===2?'maybe':'auto'):''}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="${i===0?'—':''}" value="${esc(r.arr)}" aria-label="${i+2}行目 着">
@@ -417,11 +423,23 @@ document.addEventListener('click',e=>{
     $('mNo').onclick=()=>m.hidden=true; $('mOk').onclick=()=>{ m.hidden=true; learnFlush(); D=fresh(); PH=null; savePH(); save(); render(); scrollTo(0,0); };
   }
 });
+// 写真の読み取り中は画面を消さない（2026-11-26 名取さんの希望で追加。読み取りが終わったら元に戻す）
+// アプリでは画面をつけたままにする仕組み、ブラウザでは画面の消灯を止める仕組み（Wake Lock）を使う
+// （頼んでいる途中にもう一度呼ばれても、2つ目は頼まない。頼み終わる前に「戻す」になっていたら、すぐ外す）
+let wl=null, wlP=null, AWAKE=false;
+function awake(on){ AWAKE=on; try{ if(window.NippoAndroid&&window.NippoAndroid.keepOn) window.NippoAndroid.keepOn(on); }catch(e){}
+  if(on){ if(wl||wlP||!('wakeLock' in navigator)) return;
+    wlP=navigator.wakeLock.request('screen').then(l=>{ wl=l; l.addEventListener('release',()=>{ if(wl===l) wl=null; }); if(!AWAKE){ wl=null; l.release().catch(()=>{}); } }).catch(()=>{}).finally(()=>{ wlP=null; }); }
+  else if(wl){ const w=wl; wl=null; w.release().catch(()=>{}); } }
+// ほかのアプリに切り替えて戻ってきたときは、ブラウザの仕組みが外れているので、読み取り中ならかけ直す
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&AWAKE) awake(true); });
 const onPhoto=async e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
   $('busy').textContent='写真を読み取っています…';
+  awake(true);
   await new Promise(r=>setTimeout(r,30));
   let res; try{ res=await window.NippoPhoto.analyze(f); }catch(err){ res={ok:false}; }
+  if(!READING) awake(false);   // 数字の読み取り（readDigits）に進むときは、そちらでつけたままにする
   $('busy').textContent='';
   if(!res.ok){ $('busy').textContent=res.empty?'書いてある行が見つかりませんでした。':res.upside?'用紙の上下の向きが分かりませんでした。用紙の上が写真の上になるように撮り直してください。':'用紙を見つけられませんでした。上から、用紙全体が入るように撮り直してください。'; return; }
   const apply=()=>{
@@ -435,7 +453,7 @@ const onPhoto=async e=>{
     D.rows=res.rows.map(r=>({arr:'',dep:'',meter:'',loaded:r.loaded,cargo:{in:!!r.cargoIn,out:!!r.cargoOut,outOnly:!!r.cargoOutOnly}}));
     if(D.rows.length<2) D.rows.push(newRow());
     const small=cv=>{ if(!cv) return null; const h=48, w=Math.max(8,Math.round(cv.width*h/cv.height)), c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(cv,0,0,w,h); return c.toDataURL('image/jpeg',0.8); };
-    PH={rows:res.rows.map(r=>r.img),header:res.header,t:Date.now(),
+    PH={rows:res.rows.map(r=>r.img),cargo:res.rows.map(r=>r.cargoImg||null),header:res.header,t:Date.now(),
       cells:res.rows.map(r=>({arr:r.hasArr?small(r.ocr.arr.A):null,dep:r.hasDep?small(r.ocr.dep.A):null,meter:small(r.ocr.meter.C||r.ocr.meter.A)}))}; savePH(); save(); render();
     $('photoTop').scrollIntoView({behavior:'smooth',block:'start'});
     if($('ocrOn').checked) readDigits(res.rows,res.head);
@@ -451,7 +469,7 @@ new MutationObserver(()=>{ if(READING){ $('progBar').hidden=false; $('progBar').
 const RDKEY='unkou-reading';
 async function readDigits(prow,head){
   const rowsAt=D.rows; // 読んでいる間に作り直されたら反映しない
-  READING=true; $('progBar').hidden=false; $('progBar').textContent='写真の数字を読み取っています…（終わるまでこの画面を開いたままにしてください）';
+  READING=true; awake(true); $('progBar').hidden=false; $('progBar').textContent='写真の数字を読み取っています…（終わるまでこの画面を開いたままにしてください）';
   try{ localStorage.setItem(RDKEY,String(Date.now())); }catch(e){}
   try{
     const prog=p=>{ $('busy').textContent=p.phase==='download'?`数字を読む部品をダウンロード中… ${(p.bytes/1048576).toFixed(0)}MB（最初の1回だけ）`:'始業・終業メーターを読み取っています…'; };
@@ -482,7 +500,7 @@ async function readDigits(prow,head){
     $('busy').textContent=((n+nm)?`自動で入れました：青 ${n}か所・黄 ${nm}か所。写真と見比べてください。`:'自動で読める数字はありませんでした。写真を見て打ってください。')+(hn?' '+hn:'');
   }catch(err){ $('busy').textContent='数字の自動読み取りができませんでした（電波が無い・部品をダウンロードできない など）。写真を見て打ってください。（理由：'+String(err&&err.message||err).slice(0,80)+'）'; }
   finally{ try{ await window.NippoOCR.closeModels(); }catch(e){}   // 読み終わったら文字を読む部品を閉じてメモリを返す
-    READING=false; try{ localStorage.removeItem(RDKEY); }catch(e){}
+    READING=false; awake(false); try{ localStorage.removeItem(RDKEY); }catch(e){}
     $('progBar').textContent='読み取りが終わりました：'+$('busy').textContent; setTimeout(()=>{ if(!READING) $('progBar').hidden=true; },6000); }
 }
 try{ $('ocrOn').checked=localStorage.getItem('unkou-ocr-on')!=='0'; }catch(e){ $('ocrOn').checked=true; }
@@ -506,7 +524,7 @@ render();
 // 電波が無くても開けるように、ページを端末に保存しておく
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
-<script src="photo.js?v=32"></script>
+<script src="photo.js?v=33"></script>
 <script src="ocr.js?v=31"></script>
 
 </body>
