@@ -1,5 +1,5 @@
 // 運行日報：ページを端末に保存して、電波が無くても開けるようにする
-const C='unkou-v44';
+const C='unkou-v45';
 const PARTS='nippo-parts-v1';   // 文字を読む部品（/nippo/m/）。アプリを更新しても消さない
 const FILES=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png','photo.js?v=33','ocr.js?v=34','taiki.html','taiki/?from=nippo','taiki.js?v=4'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(C).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())); });
@@ -15,6 +15,10 @@ self.addEventListener('fetch',e=>{
     return; }
   const keepable=u.startsWith(self.location.origin)||u.includes('fonts.g');
   // ページは先に新しい版を取りに行き、取れなければ保存しておいた版を出す
-  e.respondWith(fetch(e.request).then(r=>{ if(r.ok&&keepable){ const cp=r.clone(); caches.open(C).then(c=>c.put(e.request,cp)); } return r; })
+  // GitHub Pages はページを「10分間は取り直さなくてよい」と返すので、ふつうに取りに行くとスマホの保存分（古い版）が出て、
+  // 新しい版を公開しても最大10分は古いまま開いていた（2026-11-26）。自分のサイトのファイルは毎回サーバーに「変わったか」を確かめる
+  const mine=u.startsWith(self.location.origin);
+  const req=mine?(e.request.mode==='navigate'?new Request(u,{cache:'no-cache',credentials:'same-origin',redirect:'manual'}):new Request(e.request,{cache:'no-cache'})):e.request;
+  e.respondWith(fetch(req).then(r=>{ if(r.ok&&keepable){ const cp=r.clone(); caches.open(C).then(c=>c.put(e.request,cp)); } return r; })
     .catch(()=>caches.match(e.request).then(m=>m||(u.startsWith(self.location.origin)?caches.match('index.html'):Response.error()))));
 });
