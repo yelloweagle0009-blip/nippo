@@ -290,13 +290,16 @@ async function analyze(file,opt){
   // 斜めから撮ると表の縦の線が傾くので、1行目より上にある欄は、傾きの分だけ横にずらして切り抜く
   // （2026-11-17 の日報で、始業メーターの最後の字が切り抜きの外に出て読めなかった）
   const sl=(L.seps[15][1]-L.seps[0][1])/((L.seps[15][2]-L.seps[0][2])||1), HX=(ref,y)=>X(r1,ref)+sl*(y-r1.y);
+  // 右端は少しだけなら写真の外にはみ出してもよい（はみ出した所は白で埋める）。
+  // （2026-11-26 の日報：用紙の右端が写真の端ぎりぎりで、欄の右の「km」の字のあたりが外にはみ出し、数字は全部写っているのに始業・終業メーターを読まなかった）
+  const inR=(x0,x1)=>x1<=L.w+0.15*(x1-x0);
   const hy0=r1.y-4.9*r1.d, hy1=r1.y-2.0*r1.d, hx0=HX(525,(hy0+hy1)/2), hx1=HX(790,(hy0+hy1)/2);
-  if(hx0>=0&&hy0>=0&&hx1<=L.w&&hy1<=L.h) header=rectCrop(hiR,k,hx0,hy0,hx1,hy1).toDataURL('image/jpeg',0.82);
+  if(hx0>=0&&hy0>=0&&inR(hx0,hx1)&&hy1<=L.h) header=rectCrop(hiR,k,hx0,hy0,hx1,hy1).toDataURL('image/jpeg',0.82);
   // 始業・終業メーターと走行粁の数字の部分（数字の読み取り用）。写っていなければ出さない
-  let head=null; const hb=(a,b)=>{ const y0=r1.y+a*r1.d, y1=r1.y+b*r1.d, x0=HX(620,(y0+y1)/2), x1=HX(765,(y0+y1)/2); return (x0>=0&&y0>=0&&x1<=L.w&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
+  let head=null; const hb=(a,b)=>{ const y0=r1.y+a*r1.d, y1=r1.y+b*r1.d, x0=HX(620,(y0+y1)/2), x1=HX(765,(y0+y1)/2); return (x0>=0&&y0>=0&&inR(x0,x1)&&y1<=L.h)?rectCrop(hiR,k,x0,y0,x1,y1):null; };
   const hs=hb(-4.6,-3.4), he=hb(-3.4,-2.25), ht=hb(-2.25,-1.35); if(hs&&he) head={start:hs,end:he,total:ht};
   free(hiR);
-  return {ok:true,rows:out,header,head,debug:{rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),cs:+cs.toFixed(4),struck:struckCargo,times:times.map(v=>+v.toFixed(3))}};
+  return {ok:true,rows:out,header,head,debug:{headX:[+(HX(765,r1.y-3*r1.d)/L.w).toFixed(3),+(HX(790,r1.y-3*r1.d)/L.w).toFixed(3)],rot,flipped:!!L.flipped,shift:L.shift,up:+L.up.toFixed(2),angle:+L.ang.toFixed(2),written,tsumi:tsumi.map(v=>+v.toFixed(3)),oroshi:oroshi.map(v=>+v.toFixed(3)),cs:+cs.toFixed(4),struck:struckCargo,times:times.map(v=>+v.toFixed(3))}};
 }
 window.NippoPhoto={analyze};
 })();

@@ -251,11 +251,16 @@ const SIMP={'车':'車','库':'庫','场':'場','图':'図','认':'認','从':'�
 const normP=s=>String(s||'').normalize('NFKC').toUpperCase().replace(/./g,c=>SIMP[c]||c).replace(/[\s・.,，、。:;~？?!！\-‐ー－+＋()（）'"`/|<>《》]/g,'');
 // 手書きの店名で読み違えやすい「形の似た字」を、店名の字にそろえてから比べる（実際の日報5枚の読み取り結果から集めた）
 // 例：車庫→「李庙」「重庫」、牧野→「收师」、富士吉田→「家吉」、甲府→「用府」、フ→「7」
-const LOOK={'車':'李车本革重申电东東','庫':'库康庙席施使体作事市','牧':'收饮饭软欣飲','野':'师鄂啊颗師','フ':'7','ラ':'3','イ':'个人仅','ス':'て','勝':'卷春腾騰胜','富':'家宝字','田':'甜团闹园','甲':'用审带','府':'腑','場':'场境增谬号县端','国':'同因四','母':'曰日','パ':'ハ八心','ナ':'+十＋','ン':'二','ニ':'=','ッ':'4'};
+// （2026-11-26 の日報を足した：車庫→「車座」「车庄」、パ→「10」「110」）
+const LOOK={'車':'李车本革重申电东東','庫':'库康庙席施使体作事市座庄','牧':'收饮饭软欣飲','野':'师鄂啊颗師','フ':'7','ラ':'3','イ':'个人仅','ス':'て','勝':'卷春腾騰胜','富':'家宝字','田':'甜团闹园','甲':'用审带','府':'腑','場':'场境增谬号县端','国':'同因四','母':'曰日','パ':'ハ八心','ナ':'+十＋','ン':'二','ニ':'=','ッ':'4'};
 const FOLD={}; for(const [k,v] of Object.entries(LOOK)) for(const c of v) FOLD[c]=k;
-const normF=s=>String(s||'').normalize('NFKC').toUpperCase().replace(/./g,c=>FOLD[c]||SIMP[c]||c).replace(/[\s・.,，、。:;~？?!！\-‐ー－()（）'"`/|<>《》]/g,'');
+// 店名に数字は無いので、「10」「110」は手書きの「パ」の読み違いとみなす
+const normF=s=>String(s||'').normalize('NFKC').toUpperCase().replace(/1?10/g,'パ').replace(/./g,c=>FOLD[c]||SIMP[c]||c).replace(/[\s・.,，、。:;~？?!！\-‐ー－()（）'"`/|<>《》]/g,'');
 const lcsLen=(a,b)=>{ let p=new Array(b.length+1).fill(0); for(let i=1;i<=a.length;i++){ const c=[0]; for(let j=1;j<=b.length;j++) c[j]=a[i-1]===b[j-1]?p[j-1]+1:Math.max(p[j],c[j-1]); p=c; } return p[b.length]; };
-const simL=(a,b)=>{ a=normF(a); b=normF(b); if(!a||!b) return 0; return 2*lcsLen(a,b)/(a.length+b.length); };
+// 似ている度合い：共通する文字の並びの長さを、両方の長さで割ったもの（ダイス係数）。
+// ただし店名の一部しか読めなかったとき（「KFK」だけ）は、短い店名ほど高くなって「KFK甲府南工場」に寄ってしまう（2026-11-26 の日報：
+// 本当は「KFKマシンセンター」）。そこで、読めた字がどれだけその店名に含まれるか（×0.85）も見て、高い方を使う
+const simL=(a,b)=>{ a=normF(a); b=normF(b); if(!a||!b) return 0; const l=lcsLen(a,b); return Math.max(2*l/(a.length+b.length),0.85*l/a.length); };
 const TP={blue:0.45,gap:0.1,yel:0.2};
 // 読みの確からしさ（m）で重みをつけた平均で、前に入れた場所のどれに一番近いかを決める
 function pickPlace(reads,known){
