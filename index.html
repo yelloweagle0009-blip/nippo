@@ -515,7 +515,9 @@ async function prepParts(){
   try{ await window.NippoOCR.prefetch(show); $('partsNote').textContent='文字を読む部品の準備ができました（スマホに保存したので、次からはダウンロードしません）'; setTimeout(()=>{ $('partsNote').textContent=''; },10000); }
   catch(e){ $('partsNote').textContent='文字を読む部品をダウンロードできませんでした。電波の良い所でアプリを開き直してください。'; }
 }
-window.addEventListener('load',()=>{ setTimeout(prepParts,500); });
+// 「アプリの版」は手で書いた数字だと更新し忘れる（2026-11-26：中身は新しいのに「38」のままだった）。
+// 読み取りの部品（ocr.js）が持つ版を、開いたときにそのまま出す
+window.addEventListener('load',()=>{ setTimeout(prepParts,500); try{ $('appVer').textContent='アプリの版 '+((window.NippoOCR&&window.NippoOCR.VER)||'?'); }catch(e){} });
 // 前回、読み取りの途中でページが止まった（スマホのメモリ不足などでページが読み込み直された）ときは知らせる
 try{ const t=localStorage.getItem(RDKEY); if(t){ localStorage.removeItem(RDKEY); $('busy').textContent='前回、写真の数字の読み取りが途中で止まりました（スマホのメモリが足りずにページが読み込み直された可能性があります）。ほかのアプリやタブを閉じてから、もう一度写真を選んでください。'; } }catch(e){}
 $('photoIn').addEventListener('change',onPhoto);
