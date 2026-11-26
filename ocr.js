@@ -258,10 +258,11 @@ const FOLD={}; for(const [k,v] of Object.entries(LOOK)) for(const c of v) FOLD[c
 // 店名に数字は無いので、「10」「110」は手書きの「パ」の読み違いとみなす
 const normF=s=>String(s||'').normalize('NFKC').toUpperCase().replace(/1?10/g,'パ').replace(/./g,c=>FOLD[c]||SIMP[c]||c).replace(/[\s・.,，、。:;~？?!！\-‐ー－()（）'"`/|<>《》]/g,'');
 const lcsLen=(a,b)=>{ let p=new Array(b.length+1).fill(0); for(let i=1;i<=a.length;i++){ const c=[0]; for(let j=1;j<=b.length;j++) c[j]=a[i-1]===b[j-1]?p[j-1]+1:Math.max(p[j],c[j-1]); p=c; } return p[b.length]; };
-// 似ている度合い：共通する文字の並びの長さを、両方の長さで割ったもの（ダイス係数）。
-// ただし店名の一部しか読めなかったとき（「KFK」だけ）は、短い店名ほど高くなって「KFK甲府南工場」に寄ってしまう（2026-11-26 の日報：
-// 本当は「KFKマシンセンター」）。そこで、読めた字がどれだけその店名に含まれるか（×0.85）も見て、高い方を使う
-const simL=(a,b)=>{ a=normF(a); b=normF(b); if(!a||!b) return 0; const l=lcsLen(a,b); return Math.max(2*l/(a.length+b.length),0.85*l/a.length); };
+// 似ている度合い：読めた字のうち、その店名で説明できる字の割合（×0.85）に、ダイス係数（×0.15）を少し足したもの。
+// 手書きの店名は一部しか読めないことが多いので、「店名の字がどれだけ読めたか」より「読めた字がどれだけ店名に含まれるか」を主にする。
+// （2026-11-26 の日報：「KFK」だけ読めた欄が、前に入れた短い店名「KFK」や「KFK甲府南工場」に寄り、
+//   「KFK地」「KFKマ」のように「マシン」の手がかりがあっても「KFKマシンセンター」にならなかった）
+const simL=(a,b)=>{ a=normF(a); b=normF(b); if(!a||!b) return 0; const l=lcsLen(a,b); return 0.85*l/a.length+0.15*2*l/(a.length+b.length); };
 const TP={blue:0.45,gap:0.1,yel:0.2};
 // 読みの確からしさ（m）で重みをつけた平均で、前に入れた場所のどれに一番近いかを決める
 function pickPlace(reads,known){
