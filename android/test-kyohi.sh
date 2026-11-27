@@ -55,9 +55,18 @@ sleep 3
 adb shell am start -W -n $P/jp.nippo.unkou.KyohiActivity
 sleep 3
 adb exec-out screencap -p > out/kyohi2.png
+# 4) 拒否の記録：アプリを閉じて開き直し、④に海外の番号と試しの番号が残っているか
+adb shell am force-stop $P
+adb shell am start -W -n $P/jp.nippo.unkou.KyohiActivity
+sleep 3
+for i in 1 2 3 4; do adb shell input swipe $((W/2)) $((H*8/10)) $((W/2)) $((H*2/10)) 300; sleep 1; done
+adb shell uiautomator dump /sdcard/ui2.xml
+adb shell cat /sdcard/ui2.xml > out/kyohi-ui2.xml
+grep -oE 'text="[^"]*(国際電話|試しの番号)[^"]*"' out/kyohi-ui2.xml | head -5
+LOG=no; if grep -q '18445550000' out/kyohi-ui2.xml && grep -q '試しの番号' out/kyohi-ui2.xml; then LOG=yes; fi
 adb shell content query --uri content://call_log/calls --projection number:type > out/kyohi-calllog.txt 2>&1
-echo "海外の番号: $S1 ／ 国内の番号: $S2 ／ 試しの番号: $S3（入力欄 $B）" | tee out/kyohi.txt
-if [ "$S1" = "mCallState=0" ] && [ "$S2" = "mCallState=1" ] && [ "$S3" = "mCallState=0" ]; then echo PASS-KYOHI | tee -a out/kyohi.txt; exit 0; fi
+echo "海外の番号: $S1 ／ 国内の番号: $S2 ／ 試しの番号: $S3（入力欄 $B）／ 記録: $LOG" | tee out/kyohi.txt
+if [ "$S1" = "mCallState=0" ] && [ "$S2" = "mCallState=1" ] && [ "$S3" = "mCallState=0" ] && [ "$LOG" = "yes" ]; then echo PASS-KYOHI | tee -a out/kyohi.txt; exit 0; fi
 echo FAIL | tee -a out/kyohi.txt
 adb logcat -d | grep -i -E "kyohi|AndroidRuntime|Telecom" | tail -80 | tee -a out/kyohi.txt
 exit 9
