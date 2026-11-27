@@ -29,6 +29,14 @@ android {
             buildConfigField 'String', 'HOME', '""'
             buildConfigField 'String', 'UA', '""'
         }
+        // 国際電話ブロック（海外の番号からの電話を鳴り始めたら切る。「迷惑電話アプリ」の役は取らないので、あんしんセキュリティと一緒に使える。インターネットの許可は持たない）
+        kyohi {
+            dimension 'app'
+            applicationId 'jp.nippo.kyohi'
+            resValue 'string', 'app_name', '国際電話ブロック'
+            buildConfigField 'String', 'HOME', '""'
+            buildConfigField 'String', 'UA', '""'
+        }
         // 待機アラームだけのアプリ（文字を読む部品は入れないので小さい）
         taiki {
             dimension 'app'
