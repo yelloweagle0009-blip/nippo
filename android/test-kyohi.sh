@@ -26,7 +26,9 @@ sleep 3
 adb shell am start -W -n $P/jp.nippo.unkou.KyohiActivity
 sleep 3
 # 入力欄は画面の下のほうにあるので、下へ送ってから画面の部品の一覧を取り、入力欄の位置を探す
-for i in 1 2 3; do adb shell input swipe 540 1700 540 500 300; sleep 1; done
+adb shell wm size
+WH=$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1); W=${WH%x*}; H=${WH#*x}
+for i in 1 2 3; do adb shell input swipe $((W/2)) $((H*8/10)) $((W/2)) $((H*2/10)) 300; sleep 1; done
 adb shell uiautomator dump /sdcard/ui.xml
 adb shell cat /sdcard/ui.xml > out/kyohi-ui.xml
 B=$(grep -oE '<node[^>]*android.widget.EditText[^>]*>' out/kyohi-ui.xml | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -1)
@@ -35,7 +37,8 @@ if [ -z "$B" ]; then echo "入力欄が見つからない"; fi
 grep -oE 'package="[^"]*"' out/kyohi-ui.xml | sort | uniq -c
 grep -oE 'class="[^"]*"' out/kyohi-ui.xml | sort | uniq -c
 grep -oE 'text="[^"]{1,40}' out/kyohi-ui.xml | head -40
-adb shell dumpsys window | grep -m3 -E 'mCurrentFocus|mFocusedApp' 
+adb shell dumpsys window | grep -m3 -E 'mCurrentFocus|mFocusedApp'
+adb shell dumpsys package $P | grep -E 'permission\.(READ_PHONE_STATE|READ_CALL_LOG|ANSWER_PHONE_CALLS|READ_CONTACTS|POST_NOTIFICATIONS): granted' 
 X=$(echo "$B" | sed -E 's/\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]/\1 \3/' | awk '{print int(($1+$2)/2)}')
 Y=$(echo "$B" | sed -E 's/\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]/\2 \4/' | awk '{print int(($1+$2)/2)}')
 adb shell input tap $X $Y
