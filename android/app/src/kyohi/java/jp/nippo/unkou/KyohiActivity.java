@@ -92,7 +92,11 @@ public class KyohiActivity extends Activity {
         logView = text(box, "", 15, false, ink);
     }
 
-    @Override protected void onResume() { super.onResume(); show(); }
+    // 画面を開いたまま電話が来ても、記録がすぐ画面に出るようにする（拒否の記録や許可が変わったら描き直す）
+    final SharedPreferences.OnSharedPreferenceChangeListener watch = (sp, k) -> { if ("log".equals(k)) runOnUiThread(this::show); };
+    @Override protected void onResume() { super.onResume(); p.registerOnSharedPreferenceChangeListener(watch); show(); }
+    @Override protected void onPause() { super.onPause(); p.unregisterOnSharedPreferenceChangeListener(watch); }
+    @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) show(); }
     @Override public void onRequestPermissionsResult(int r, String[] ps, int[] res) { super.onRequestPermissionsResult(r, ps, res); show(); }
 
     void show() {
