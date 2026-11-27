@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 国際電話ブロック：運行日報の画面・カメラ・インターネットは使わない。電話が鳴り始めたら番号を見て、国際電話なら切る -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <application>
+        <activity android:name="jp.nippo.unkou.MainActivity" tools:node="remove" />
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.files" tools:node="remove" />
+        <activity
+            android:name="jp.nippo.unkou.KyohiActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <receiver android:name="jp.nippo.unkou.KyohiReceiver" android:exported="true"
+            android:permission="android.permission.READ_PHONE_STATE">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
