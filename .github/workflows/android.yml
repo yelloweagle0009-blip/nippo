@@ -80,13 +80,14 @@ jobs:
         env:
           NIPPO_VCODE: ${{ github.run_number }}
           NIPPO_VNAME: 1.${{ github.run_number }}
-        run: gradle assembleNippoRelease assembleTaikiRelease assembleRenrakuRelease bundleTaikiRelease --no-daemon --stacktrace
+        run: gradle assembleNippoRelease assembleTaikiRelease assembleRenrakuRelease assembleKyohiRelease bundleTaikiRelease --no-daemon --stacktrace
       - run: |
           cp android/app/build/outputs/apk/nippo/release/app-nippo-release.apk unkou-nippo.apk
           cp android/app/build/outputs/apk/taiki/release/app-taiki-release.apk taiki-alarm.apk
           cp android/app/build/outputs/apk/renraku/release/app-renraku-release.apk renraku-line.apk
+          cp android/app/build/outputs/apk/kyohi/release/app-kyohi-release.apk kokusai-block.apk
           cp android/app/build/outputs/bundle/taikiRelease/app-taiki-release.aab taiki-play.aab   # Google Play に入れる形（AAB）
-          ls -la unkou-nippo.apk taiki-alarm.apk renraku-line.apk taiki-play.aab && sha256sum unkou-nippo.apk taiki-alarm.apk renraku-line.apk taiki-play.aab
+          ls -la unkou-nippo.apk taiki-alarm.apk renraku-line.apk kokusai-block.apk taiki-play.aab && sha256sum unkou-nippo.apk taiki-alarm.apk renraku-line.apk kokusai-block.apk taiki-play.aab
       - uses: actions/upload-artifact@v4
         with: { name: apk, path: "*.a[pa][kb]" }
   test:
@@ -144,6 +145,44 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: test-out-36, path: out }
+  # 国際電話ブロック：海外の番号からの電話がすぐ切れるか／国内の番号は切らないか／試しの番号は切れるかを、エミュレーターで試す
+  # （ほかのアプリのリリースを止めないように、試験もリリースも別にする）
+  test-kyohi:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: apk }
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash android/test-kyohi.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: test-out-kyohi, path: out }
+  release-kyohi:
+    needs: [build, test-kyohi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: apk }
+      - name: リリースに置く
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete kyohi --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create kyohi kokusai-block.apk --repo "${{ github.repository }}" --latest=false --title "国際電話ブロック Android版 1.${{ github.run_number }}" --notes "海外の番号（＋のあとが81以外・010で始まる番号）からの電話を、鳴り始めたらすぐ切るアプリです。あんしんセキュリティなど「迷惑電話アプリ」の設定はそのままで使えます。スマホでこのページを開いて kokusai-block.apk を押すと入れられます。インターネットの許可は持っていません。"
   release:
     needs: [build, test, test36]
     runs-on: ubuntu-latest
