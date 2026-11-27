@@ -31,6 +31,11 @@ adb shell uiautomator dump /sdcard/ui.xml
 adb shell cat /sdcard/ui.xml > out/kyohi-ui.xml
 B=$(grep -oE '<node[^>]*android.widget.EditText[^>]*>' out/kyohi-ui.xml | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -1)
 if [ -z "$B" ]; then echo "入力欄が見つからない"; fi
+# 原因を調べるため、画面に出ている部品（アプリ名・部品の種類・文字）を記録に出す
+grep -oE 'package="[^"]*"' out/kyohi-ui.xml | sort | uniq -c
+grep -oE 'class="[^"]*"' out/kyohi-ui.xml | sort | uniq -c
+grep -oE 'text="[^"]{1,40}' out/kyohi-ui.xml | head -40
+adb shell dumpsys window | grep -m3 -E 'mCurrentFocus|mFocusedApp' 
 X=$(echo "$B" | sed -E 's/\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]/\1 \3/' | awk '{print int(($1+$2)/2)}')
 Y=$(echo "$B" | sed -E 's/\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]/\2 \4/' | awk '{print int(($1+$2)/2)}')
 adb shell input tap $X $Y
