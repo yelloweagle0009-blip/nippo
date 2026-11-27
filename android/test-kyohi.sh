@@ -25,9 +25,12 @@ sleep 3
 # 3) 試しの番号：画面の入力欄に 09012345678 を入れると、国内の番号でもすぐ切れるはず（= 0）
 adb shell am start -W -n $P/jp.nippo.unkou.KyohiActivity
 sleep 3
+# 入力欄は画面の下のほうにあるので、下へ送ってから画面の部品の一覧を取り、入力欄の位置を探す
+for i in 1 2 3; do adb shell input swipe 540 1700 540 500 300; sleep 1; done
 adb shell uiautomator dump /sdcard/ui.xml
 adb shell cat /sdcard/ui.xml > out/kyohi-ui.xml
-B=$(grep -o 'class="android.widget.EditText"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' out/kyohi-ui.xml | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -1)
+B=$(grep -oE '<node[^>]*android.widget.EditText[^>]*>' out/kyohi-ui.xml | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -1)
+if [ -z "$B" ]; then echo "入力欄が見つからない"; fi
 X=$(echo "$B" | sed -E 's/\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]/\1 \3/' | awk '{print int(($1+$2)/2)}')
 Y=$(echo "$B" | sed -E 's/\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]/\2 \4/' | awk '{print int(($1+$2)/2)}')
 adb shell input tap $X $Y
