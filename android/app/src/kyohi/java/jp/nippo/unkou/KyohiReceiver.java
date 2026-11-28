@@ -38,7 +38,7 @@ public class KyohiReceiver extends BroadcastReceiver {
         long now = System.currentTimeMillis(); String key = KyohiRule.clean(num);
         if (key.equals(p.getString("lastNum", null)) && now - p.getLong("lastAt", 0) < 5000) return;
         p.edit().putString("lastNum", key).putLong("lastAt", now).apply();
-        String why = KyohiRule.reason(num, p.getBoolean("hidden", false), inContacts(c, num), p.getString("test", ""));
+        String why = KyohiRule.reason(num, p.getBoolean("hidden", false), inContacts(c, num));
         if (why == null) return;
         boolean ok = false;
         try {

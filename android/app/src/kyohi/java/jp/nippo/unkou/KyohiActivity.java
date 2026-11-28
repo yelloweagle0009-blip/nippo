@@ -16,11 +16,7 @@ import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.View;
 import android.widget.Button;
-import android.text.Editable;
-import android.text.InputType;
-import android.text.TextWatcher;
 import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -79,16 +75,9 @@ public class KyohiActivity extends Activity {
         CheckBox hid = new CheckBox(this); hid.setText("非通知も拒否する"); hid.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16); hid.setChecked(p.getBoolean("hidden", false));
         hid.setOnCheckedChangeListener((v, c) -> p.edit().putBoolean("hidden", c).apply()); box.addView(hid);
 
-        text(box, "③ 試し（国際電話はめったに来ないので）", 18, true, ink);
-        text(box, "家族や会社など、かけてもらえる人の番号を入れて、その人に電話してもらってください。すぐ切れて④に残れば、ちゃんと動いています。確かめ終わったら番号を消してください（連絡先に入っていても切ります）。", 14, false, mute);
-        EditText tn = new EditText(this); tn.setHint("試しに切る番号（例 09012345678）"); tn.setInputType(InputType.TYPE_CLASS_PHONE); tn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        tn.setText(p.getString("test", "")); box.addView(tn);
-        tn.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence a, int b1, int c, int d) {}
-            public void onTextChanged(CharSequence a, int b1, int c, int d) {}
-            public void afterTextChanged(Editable e) { p.edit().putString("test", e.toString()).apply(); } });
+        p.edit().remove("test").apply();   // 前の版の「試しの番号」が残っていれば消す
 
-        text(box, "④ 拒否した電話（新しい順）", 18, true, ink);
+        text(box, "③ 拒否した電話（新しい順）", 18, true, ink);
         logView = text(box, "", 15, false, ink);
     }
 
