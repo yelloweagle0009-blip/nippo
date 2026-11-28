@@ -11,12 +11,14 @@ sleep 4
 adb exec-out screencap -p > out/kyohi1.png
 state(){ adb shell dumpsys telephony.registry | grep -m1 -oE 'mCallState=[0-9]'; }
 # 1) 海外の番号：鳴り始めてすぐ切れるはず（6秒後には「鳴っていない」= 0）
+adb shell log -t kyohi "試験: 海外の番号から着信"
 adb emu gsm call +18445550000
 sleep 6
 S1=$(state)
 adb emu gsm cancel +18445550000
 sleep 3
 # 2) 国内の番号：切らないので、6秒後も「鳴っている」= 1
+adb shell log -t kyohi "試験: 国内の番号から着信"
 adb emu gsm call 09012345678
 sleep 6
 S2=$(state)
@@ -36,6 +38,7 @@ adb shell cat /sdcard/ui2.xml > out/kyohi-ui2.xml
 grep -oE 'text="[^"]*国際電話[^"]*"' out/kyohi-ui2.xml | head -5
 LOG=no; if grep -q '18445550000' out/kyohi-ui2.xml && ! grep -q '09012345678' out/kyohi-ui2.xml; then LOG=yes; fi
 adb shell content query --uri content://call_log/calls --projection number:type > out/kyohi-calllog.txt 2>&1
+adb logcat -d -v time -s kyohi:I | tee out/kyohi-log.txt
 echo "海外の番号: $S1 ／ 国内の番号: $S2 ／ 記録: $LOG" | tee out/kyohi.txt
 if [ "$S1" = "mCallState=0" ] && [ "$S2" = "mCallState=1" ] && [ "$LOG" = "yes" ]; then echo PASS-KYOHI | tee -a out/kyohi.txt; exit 0; fi
 echo FAIL | tee -a out/kyohi.txt
