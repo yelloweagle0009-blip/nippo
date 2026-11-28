@@ -46,6 +46,7 @@ public class KyohiReceiver extends BroadcastReceiver {
         if (tm == null || c.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) { log(c, p, num, why, false); return; }
         // 鳴り始めのすぐ後だと、切る指示が早すぎて効かないことがある（エミュレーターの試験で確認）。
         // なので1秒ごとに「まだ鳴っているか」を確かめ、鳴っていれば切り直す（最大4回）。切れたかどうかを記録に残す
+        final TelephonyManager tel = (TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE);
         final PendingResult pr = goAsync();
         final Handler h = new Handler(Looper.getMainLooper());
         final String fNum = num, fWhy = why;
@@ -57,7 +58,7 @@ public class KyohiReceiver extends BroadcastReceiver {
                 final Runnable self = this;
                 h.postDelayed(() -> {
                     boolean still = false;
-                    try { still = tm.isRinging(); } catch (Exception e) { }
+                    try { still = tel != null && tel.getCallState() == TelephonyManager.CALL_STATE_RINGING; } catch (Exception e) { }
                     if (still && n < 4) self.run();
                     else { log(c, p, fNum, fWhy, !still); pr.finish(); }
                 }, 1000);
