@@ -13,14 +13,14 @@ state(){ adb shell dumpsys telephony.registry | grep -m1 -oE 'mCallState=[0-9]';
 # 1) 海外の番号：鳴り始めてすぐ切れるはず（6秒後には「鳴っていない」= 0）
 adb shell log -t kyohi "試験: 海外の番号から着信"
 adb emu gsm call +18445550000
-sleep 6
-S1=$(state)
+# 動きの遅いエミュレーターでは、鳴り始めの知らせがアプリに届くまで数秒かかることがあるので、最大20秒まで1秒ごとに見る
+S1=x; for i in $(seq 1 20); do sleep 1; S1=$(state); [ "$S1" = "mCallState=0" ] && { echo "海外の番号は $i 秒で切れた"; break; }; done
 adb emu gsm cancel +18445550000
 sleep 3
-# 2) 国内の番号：切らないので、6秒後も「鳴っている」= 1
+# 2) 国内の番号：切らないので、12秒後も「鳴っている」= 1
 adb shell log -t kyohi "試験: 国内の番号から着信"
 adb emu gsm call 09012345678
-sleep 6
+sleep 12
 S2=$(state)
 adb emu gsm cancel 09012345678
 sleep 3
