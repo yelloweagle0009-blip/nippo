@@ -18,6 +18,8 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.ContactsContract;
 import android.telecom.TelecomManager;
 import android.telephony.TelephonyManager;
@@ -40,12 +42,27 @@ public class KyohiReceiver extends BroadcastReceiver {
         p.edit().putString("lastNum", key).putLong("lastAt", now).apply();
         String why = KyohiRule.reason(num, p.getBoolean("hidden", false), inContacts(c, num));
         if (why == null) return;
-        boolean ok = false;
-        try {
-            TelecomManager tm = (TelecomManager) c.getSystemService(Context.TELECOM_SERVICE);
-            if (tm != null && c.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) ok = tm.endCall();
-        } catch (Exception e) { ok = false; }
-        log(c, p, num, why, ok);
+        final TelecomManager tm = (TelecomManager) c.getSystemService(Context.TELECOM_SERVICE);
+        if (tm == null || c.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) { log(c, p, num, why, false); return; }
+        // 鳴り始めのすぐ後だと、切る指示が早すぎて効かないことがある（エミュレーターの試験で確認）。
+        // なので1秒ごとに「まだ鳴っているか」を確かめ、鳴っていれば切り直す（最大4回）。切れたかどうかを記録に残す
+        final PendingResult pr = goAsync();
+        final Handler h = new Handler(Looper.getMainLooper());
+        final String fNum = num, fWhy = why;
+        new Runnable() {
+            int n = 0;
+            @Override public void run() {
+                try { tm.endCall(); } catch (Exception e) { }
+                n++;
+                final Runnable self = this;
+                h.postDelayed(() -> {
+                    boolean still = false;
+                    try { still = tm.isRinging(); } catch (Exception e) { }
+                    if (still && n < 4) self.run();
+                    else { log(c, p, fNum, fWhy, !still); pr.finish(); }
+                }, 1000);
+            }
+        }.run();
     }
 
     // 連絡先に入っている番号か（入っていれば拒否しない）。連絡先を読む許可が無ければ「入っていない」とみなす
