@@ -21,6 +21,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.ContactsContract;
+import android.util.Log;
 import android.telecom.TelecomManager;
 import android.telephony.TelephonyManager;
 
@@ -50,17 +51,24 @@ public class KyohiReceiver extends BroadcastReceiver {
         final PendingResult pr = goAsync();
         final Handler h = new Handler(Looper.getMainLooper());
         final String fNum = num, fWhy = why;
+        final String myKey = key;
+        Log.i("kyohi", "鳴り始め " + num + " → " + why + " を切る");
         new Runnable() {
             int n = 0;
             @Override public void run() {
-                try { tm.endCall(); } catch (Exception e) { }
+                boolean r = false;
+                try { r = tm.endCall(); } catch (Exception e) { Log.w("kyohi", "切れない", e); }
                 n++;
+                Log.i("kyohi", "切る指示 " + n + "回目 → " + r);
                 final Runnable self = this;
                 h.postDelayed(() -> {
                     boolean still = false;
                     try { still = tel != null && tel.getCallState() == TelephonyManager.CALL_STATE_RINGING; } catch (Exception e) { }
-                    if (still && n < 4) self.run();
-                    else { log(c, p, fNum, fWhy, !still); pr.finish(); }
+                    // 別の電話が鳴り始めていたら、その電話は切らない（切り直しは同じ番号の電話だけ）
+                    boolean other = !myKey.equals(p.getString("lastNum", ""));
+                    Log.i("kyohi", "1秒後 まだ鳴っている=" + still + " 別の電話=" + other);
+                    if (still && !other && n < 4) self.run();
+                    else { log(c, p, fNum, fWhy, !still || other); pr.finish(); }
                 }, 1000);
             }
         }.run();
