@@ -46,7 +46,7 @@ public class KyohiReceiver extends BroadcastReceiver {
         final TelecomManager tm = (TelecomManager) c.getSystemService(Context.TELECOM_SERVICE);
         if (tm == null || c.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) { log(c, p, num, why, false); return; }
         // 鳴り始めのすぐ後だと、切る指示が早すぎて効かないことがある（エミュレーターの試験で確認）。
-        // なので1秒ごとに「まだ鳴っているか」を確かめ、鳴っていれば切り直す（最大4回）。切れたかどうかを記録に残す
+        // なので1秒ごとに「まだ鳴っているか」を確かめ、鳴っていれば切り直す（最大8回）。切れたかどうかを記録に残す
         final TelephonyManager tel = (TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE);
         final PendingResult pr = goAsync();
         final Handler h = new Handler(Looper.getMainLooper());
@@ -67,7 +67,7 @@ public class KyohiReceiver extends BroadcastReceiver {
                     // 別の電話が鳴り始めていたら、その電話は切らない（切り直しは同じ番号の電話だけ）
                     boolean other = !myKey.equals(p.getString("lastNum", ""));
                     Log.i("kyohi", "1秒後 まだ鳴っている=" + still + " 別の電話=" + other);
-                    if (still && !other && n < 4) self.run();
+                    if (still && !other && n < 8) self.run();
                     else { log(c, p, fNum, fWhy, !still || other); pr.finish(); }
                 }, 1000);
             }
